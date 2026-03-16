@@ -6,6 +6,7 @@ import AiAssistantPage from './pages/AiAssistantPage'
 import AdminPage from './pages/AdminPage'
 import BillingPage from './pages/BillingPage'
 import NotificationsPage from './pages/NotificationsPage'
+import PaymentPage from './pages/PaymentPage'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/billing" element={<BillingPage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
+      <Route path="/payment" element={<PaymentPage />} />
     </Routes>
   )
 }

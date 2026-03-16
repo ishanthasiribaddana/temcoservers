@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2026-03-17
+
+### Added
+- **LKR Currency Badges** — Gradient pill badges on pricing cards showing approximate LKR bank selling rate (fetched from open.er-api.com with ~2% markup)
+- **Competitor Price Comparison** — "How We Compare" section between Pricing and Partners, comparing TemcoServers vs GitHub Copilot, AWS, Google Cloud, and Azure with feature checkmarks and savings percentages
+- **Payment Page** — `/payment` route with bank transfer details (Nations Trust, Sampath, Commercial Bank), copy-to-clipboard account numbers, and bank slip upload form
+  - Fields: Purchaser Name (auto-filled), Reference Number, Amount (LKR), Plan (dropdown), Bank Slip (file upload)
+  - Login required, plan pre-selected via `?plan=<slug>` query param
+  - Success confirmation screen with reference number
+- **Java Institute Logo** — Replaced JRIRC partner icon with actual Java Institute logo image
+
+### Changed
+- Pricing plan "Get Started" buttons now link to `/payment?plan=<slug>` instead of `/login`
+- Bank account name updated to "Java Institute Holdings (Pvt) Ltd"
+
+### Files Changed
+- `frontend/src/App.jsx` — added PaymentPage import and `/payment` route
+- `frontend/src/pages/LandingPage.jsx` — LKR badges, comparison table, JRIRC logo, plan slugs, payment links
+- `frontend/src/pages/PaymentPage.jsx` — new payment page component
+- `frontend/public/images/java-institute-logo.png` — new partner logo asset
+- `frontend/src/version.js` — bumped to v1.1.0
+
+---
+
 ## [1.0.0] - 2026-03-16
 
 ### Added

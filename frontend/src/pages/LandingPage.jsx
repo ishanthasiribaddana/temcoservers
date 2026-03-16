@@ -1,10 +1,26 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Server, Code, Zap, Shield, ChevronRight, Monitor, Cpu, Globe, Building2, Landmark, Check } from 'lucide-react'
 
 function LandingPage() {
+  const [lkrRate, setLkrRate] = useState(null)
+
+  useEffect(() => {
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then(res => res.json())
+      .then(data => {
+        if (data.result === 'success' && data.rates?.LKR) {
+          // Add ~2% markup to approximate bank selling rate
+          setLkrRate(Math.round(data.rates.LKR * 1.02))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   const plans = [
     {
       name: 'Starter',
+      slug: 'starter',
       price: '$4',
       period: '/month',
       description: 'Perfect for beginners',
@@ -19,6 +35,7 @@ function LandingPage() {
     },
     {
       name: 'AI Basic',
+      slug: 'ai-basic',
       price: '$8',
       period: '/month',
       description: 'AI-powered coding assistant',
@@ -33,6 +50,7 @@ function LandingPage() {
     },
     {
       name: 'AI Pro',
+      slug: 'ai-pro',
       price: '$15',
       period: '/month',
       description: 'For serious developers',
@@ -47,6 +65,7 @@ function LandingPage() {
     },
     {
       name: 'AI Unlimited',
+      slug: 'ai-unlimited',
       price: '$25',
       period: '/month',
       description: 'Full power, no limits',
@@ -191,6 +210,14 @@ function LandingPage() {
                     <div className="mb-6">
                       <span className={`text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r ${gradients[i]}`}>{plan.price}</span>
                       <span className="text-gray-400 text-sm">{plan.period}</span>
+                      {lkrRate && (
+                        <div className="mt-2">
+                          <span className="inline-flex items-center gap-1.5 text-sm font-bold text-white bg-gradient-to-r from-primary-500 to-accent-500 rounded-full px-3 py-1 shadow-sm">
+                            🇱🇰 LKR {(parseInt(plan.price.replace('$', '')) * lkrRate).toLocaleString()}
+                            <span className="font-normal text-white/70 text-xs">{plan.period}</span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <ul className="space-y-3 mb-6">
                       {plan.features.map((feature, j) => (
@@ -201,7 +228,7 @@ function LandingPage() {
                       ))}
                     </ul>
                     <Link
-                      to="/login"
+                      to={`/payment?plan=${plan.slug}`}
                       className={`block text-center py-2.5 rounded-lg text-sm font-semibold transition ${
                         plan.highlight
                           ? 'bg-gradient-to-r from-primary-500 to-accent-500 hover:from-primary-600 hover:to-accent-600 text-white shadow-md'
@@ -218,6 +245,85 @@ function LandingPage() {
         </div>
       </section>
 
+      {/* Price Comparison Section */}
+      <section id="compare" className="py-20 px-6 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-3 text-gray-900">How We Compare</h2>
+          <div className="w-16 h-1 bg-temco-500 mx-auto rounded-full mb-4" />
+          <p className="text-gray-500 text-center mb-12">AI-integrated cloud hosting at a fraction of the cost</p>
+
+          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left py-4 px-5 font-semibold text-gray-700">Provider</th>
+                  <th className="text-center py-4 px-4 font-semibold text-gray-700">Cloud VPS</th>
+                  <th className="text-center py-4 px-4 font-semibold text-gray-700">AI Assistant</th>
+                  <th className="text-center py-4 px-4 font-semibold text-gray-700">Dev Tools</th>
+                  <th className="text-center py-4 px-4 font-semibold text-gray-700">Student Plan</th>
+                  <th className="text-right py-4 px-5 font-semibold text-gray-700">Price/mo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { name: 'TemcoServers', sub: 'AI Basic Plan', price: '$8', vps: true, ai: true, dev: true, student: true, highlight: true, save: null },
+                  { name: 'GitHub Copilot', sub: '+ DigitalOcean Droplet', price: '$22', vps: true, ai: true, dev: false, student: false, highlight: false, save: '64%' },
+                  { name: 'AWS', sub: 'CodeWhisperer + EC2', price: '$25', vps: true, ai: true, dev: false, student: false, highlight: false, save: '68%' },
+                  { name: 'Google Cloud', sub: 'Gemini + Compute Engine', price: '$40', vps: true, ai: true, dev: false, student: false, highlight: false, save: '80%' },
+                  { name: 'Azure', sub: 'Copilot + VM B1s', price: '$30', vps: true, ai: true, dev: false, student: false, highlight: false, save: '73%' },
+                ].map((row, i) => (
+                  <tr
+                    key={i}
+                    className={`border-b border-gray-100 ${
+                      row.highlight
+                        ? 'bg-gradient-to-r from-primary-50 to-accent-50'
+                        : i % 2 === 1 ? 'bg-gray-50/50' : 'bg-white'
+                    }`}
+                  >
+                    <td className="py-4 px-5">
+                      <div className="flex items-center gap-2">
+                        <div className={`font-bold ${row.highlight ? 'text-primary-600' : 'text-gray-800'}`}>
+                          {row.name}
+                        </div>
+                        {row.highlight && (
+                          <span className="text-[10px] font-bold text-white bg-accent-500 rounded-full px-2 py-0.5 uppercase">You</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400">{row.sub}</div>
+                    </td>
+                    {[row.vps, row.ai, row.dev, row.student].map((val, j) => (
+                      <td key={j} className="text-center py-4 px-4">
+                        {val ? (
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-100">
+                            <Check className="w-3.5 h-3.5 text-green-600" />
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-red-50 text-red-400 text-xs font-bold">✕</span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="text-right py-4 px-5">
+                      <div className={`font-bold text-base ${row.highlight ? 'text-primary-600' : 'text-gray-800'}`}>
+                        {row.price}
+                      </div>
+                      {row.save && (
+                        <div className="text-[10px] font-semibold text-green-600 bg-green-50 rounded-full px-2 py-0.5 inline-block mt-1">
+                          Save {row.save}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-xs text-gray-400 text-center mt-4">
+            * Prices based on publicly available pricing as of 2026. Competitor prices include VPS + AI tool subscription combined.
+          </p>
+        </div>
+      </section>
+
       {/* Partners Section */}
       <section id="partners" className="py-20 px-6 bg-white">
         <div className="max-w-4xl mx-auto text-center">
@@ -228,8 +334,8 @@ function LandingPage() {
             <div className="rounded-xl overflow-hidden border border-primary-100 hover:border-primary-300 hover:shadow-lg transition shadow-sm bg-white">
               <div className="h-1.5 bg-gradient-to-r from-primary-400 via-primary-500 to-primary-600" />
               <div className="p-8">
-              <div className="w-14 h-14 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-                <Building2 className="w-7 h-7 text-white" />
+              <div className="w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-2 overflow-hidden">
+                <img src="/images/java-institute-logo.png" alt="Java Institute" className="w-full h-full object-contain" />
               </div>
               <h3 className="text-xl font-bold text-primary-600 mb-2">JRIRC</h3>
               <p className="text-sm text-gray-500 leading-relaxed">
