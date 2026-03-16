@@ -53,7 +53,7 @@ Resells Contabo VPS instances with AI code generation add-ons.
 
 ## Existing Database Reuse Strategy
 - **Database**: ijts_recovery_db (on temco-admin-mariadb container, port 3306)
-- **DB Root Password**: 6qZB6d@pIvj
+- **DB Root Password**: (see .env.production)
 - **Reused tables**: general_user_profile, user_login, user_role, student, branch, voucher, voucher_type, voucher_item, communication_history, communication_type, communication_purpose
 - **New tables**: Prefixed with `ts_` — MUST consult user before adding any new table
 - **Created tables**: ts_subscription_plan (seeded with 4 plans), ts_server_instance, ts_subscription, ts_ai_usage, ts_ai_conversation, ts_ai_message, ts_server_action_log
@@ -197,26 +197,75 @@ Frontend dev server     → localhost:3010  (Vite HMR)
 docker rm -f temcoservers-backend
 docker run -d --name temcoservers-backend --network temco-network -p 127.0.0.1:8180:8080 \
   -e DB_HOST=temco-admin-mariadb -e DB_PORT=3306 -e DB_NAME=ijts_recovery_db \
-  -e DB_USER=root -e "DB_PASSWORD=6qZB6d@pIvj" \
-  -e "JWT_SECRET=TemcoServers-JWT-Secret-2026-Change-In-Production" \
-  -e "CONTABO_CLIENT_ID=INT-142497" \
-  -e "CONTABO_CLIENT_SECRET=06221e04-3706-403c-b704-96e1b2e153de" \
-  -e "CONTABO_API_USER=ishantha@gmail.com" \
-  -e "CONTABO_API_PASSWORD=Java0218#@" \
+  -e DB_USER=root -e "DB_PASSWORD=<see .env.production>" \
+  -e "JWT_SECRET=<see .env.production>" \
+  -e "CONTABO_CLIENT_ID=<see .env.production>" \
+  -e "CONTABO_CLIENT_SECRET=<see .env.production>" \
+  -e "CONTABO_API_USER=<see .env.production>" \
+  -e "CONTABO_API_PASSWORD=<see .env.production>" \
   temcoservers-backend:latest
 
 # AI Module
 docker rm -f temcoservers-ai-module
 docker run -d --name temcoservers-ai-module --network temco-network -p 127.0.0.1:8580:8000 \
   -e DB_HOST=temco-admin-mariadb -e DB_PORT=3306 -e DB_NAME=ijts_recovery_db \
-  -e DB_USER=root -e "DB_PASSWORD=6qZB6d@pIvj" \
+  -e DB_USER=root -e "DB_PASSWORD=<see .env.production>" \
   -e OPENAI_API_KEY="" -e DEEPSEEK_API_KEY="" \
   temcoservers-ai-module:latest
 ```
 
+### Session 4 — 2026-03-16
+- [x] **CI/CD Pipeline (`release.md`)**:
+  - 18-step release workflow adapted for TemcoServers Docker-based deployment
+  - Version bump (version.js), CHANGELOG, git tag, SSH deploy to production
+  - Database migration support with idempotent SQL and naming conventions
+  - Post-deploy health checks for backend, AI module, frontend, DB connectivity
+  - Rollback procedure documented
+  - Production Docker Compose (`docker-compose.prod.yml`) + Dockerfile.prod for frontend
+  - Nginx frontend config (SPA routing + API proxy)
+  - `.env.production.example` template created
+- [x] **Production Server Security Hardening (194.163.130.223)**:
+  - SSH key pair generated: `~/.ssh/temcoservers_deploy` (Ed25519)
+  - SSH config alias: `ssh TemcoServers` → deploy@194.163.130.223
+  - Non-root `deploy` user with limited sudo (docker, git, mysql, nginx, certbot, ufw, fail2ban-client)
+  - Root SSH login disabled (`PermitRootLogin no`)
+  - Password authentication disabled (`PasswordAuthentication no`)
+  - `AllowUsers deploy` enforced
+  - UFW firewall: only ports 22, 80, 443 open; all Docker ports hidden
+  - Docker + UFW conflict resolved: `{"iptables": false}` in daemon.json + DOCKER-USER chain in after.rules
+  - Fail2ban active: 3 failures in 10min = 1hr ban (already caught bot `80.94.92.182`)
+  - Reusable `setup_server_security.md` guide created (Phase 1-7 with Docker+UFW fix)
+- [x] **Server Software Installed**:
+  - Docker 28.2.2 + Docker Compose v5.1.0
+  - Nginx 1.24.0 (Ubuntu)
+  - MariaDB client 10.11.14
+  - Git 2.43.0
+- [x] **Git Repo Initialized + Pushed to GitHub**:
+  - Repository: https://github.com/ishanthasiribaddana/temcoservers
+  - 65 files, 8435 insertions
+  - `.gitignore` covers .env, Java targets, node_modules, Python cache, IDE files
+  - Production server cloned to `/opt/temcoservers` (owned by `deploy` user)
+- [x] **release.md Updated** to use `deploy` user via SSH alias instead of root
+
+### Production Server Info
+| Property | Value |
+|----------|-------|
+| IP | 194.163.130.223 |
+| SSH | `ssh TemcoServers` (alias, key auth) |
+| User | deploy (non-root) |
+| SSH Key | `~/.ssh/temcoservers_deploy` |
+| Firewall | UFW — ports 22, 80, 443 only |
+| Fail2ban | Active — 3 failures = 1hr ban |
+| Project Path | `/opt/temcoservers` |
+| Docker | 28.2.2 + Compose v5.1.0 |
+| Nginx | 1.24.0 |
+
 ### Current Step
-**All major features built. Admin panel, billing (voucher integration), and notifications (communication_history) fully functional. 7 frontend pages, 6 REST resources, 5 backend services.**
+**All features built. Server hardened. Repo on GitHub. Ready for first `/release` deployment once `.env.production` is created with real credentials.**
 
 ### Pending / Next Steps
 - [ ] Add DEEPSEEK_API_KEY or OPENAI_API_KEY to AI module for live code generation
-- [ ] Deploy platform on Contabo server
+- [ ] Create `.env.production` with real production credentials
+- [ ] First `/release` deploy to production server
+- [ ] Configure Nginx reverse proxy on production (when domain is ready)
+- [ ] Set up Let's Encrypt SSL (when domain is ready)
