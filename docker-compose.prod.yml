@@ -1,0 +1,83 @@
+version: '3.8'
+
+# =============================================================================
+# TemcoServers Platform - Production Docker Compose
+# =============================================================================
+# Deploys all 3 services on production server (194.163.130.223).
+# Frontend served via Nginx (production build), not Vite dev server.
+# All ports bound to 0.0.0.0 for external access.
+#
+# Usage: docker compose -f docker-compose.prod.yml up -d --build
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Java EE Backend (WildFly 30)
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: temcoservers-backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:-temco-admin-mariadb}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-ijts_recovery_db}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      CONTABO_CLIENT_ID: ${CONTABO_CLIENT_ID}
+      CONTABO_CLIENT_SECRET: ${CONTABO_CLIENT_SECRET}
+      CONTABO_API_USER: ${CONTABO_API_USER}
+      CONTABO_API_PASSWORD: ${CONTABO_API_PASSWORD}
+      AI_MODULE_URL: http://temcoservers-ai-module:8000
+    ports:
+      - "8180:8080"
+    networks:
+      - temco-network
+    depends_on:
+      - ai-module
+
+  # ---------------------------------------------------------------------------
+  # Python AI Module (internal — same DB, called by backend)
+  # ---------------------------------------------------------------------------
+  ai-module:
+    build:
+      context: ./ai-module
+      dockerfile: Dockerfile
+    container_name: temcoservers-ai-module
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:-temco-admin-mariadb}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_NAME: ${DB_NAME:-ijts_recovery_db}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    ports:
+      - "8580:8000"
+    networks:
+      - temco-network
+
+  # ---------------------------------------------------------------------------
+  # React Frontend (Nginx — production build)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: temcoservers-frontend
+    restart: unless-stopped
+    ports:
+      - "3010:80"
+    depends_on:
+      - backend
+    networks:
+      - temco-network
+
+networks:
+  temco-network:
+    external: true
+    name: temco-network

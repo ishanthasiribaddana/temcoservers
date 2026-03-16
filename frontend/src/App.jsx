@@ -1,0 +1,24 @@
+import { Routes, Route } from 'react-router-dom'
+import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import DashboardPage from './pages/DashboardPage'
+import AiAssistantPage from './pages/AiAssistantPage'
+import AdminPage from './pages/AdminPage'
+import BillingPage from './pages/BillingPage'
+import NotificationsPage from './pages/NotificationsPage'
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/ai" element={<AiAssistantPage />} />
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="/billing" element={<BillingPage />} />
+      <Route path="/notifications" element={<NotificationsPage />} />
+    </Routes>
+  )
+}
+
+export default App

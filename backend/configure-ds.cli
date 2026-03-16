@@ -1,0 +1,28 @@
+# WildFly CLI script to configure MariaDB datasource
+# Runs in embedded mode during Docker build
+
+embed-server --std-out=echo --server-config=standalone.xml
+
+# Add MariaDB JDBC driver
+/subsystem=datasources/jdbc-driver=mariadb:add( \
+    driver-name=mariadb, \
+    driver-module-name=org.mariadb, \
+    driver-class-name=org.mariadb.jdbc.Driver \
+)
+
+# Add TemcoServers datasource (uses env vars at runtime)
+data-source add \
+    --name=TemcoServersDS \
+    --jndi-name=java:jboss/datasources/TemcoServersDS \
+    --driver-name=mariadb \
+    --connection-url=jdbc:mariadb://${env.DB_HOST,env.DB_HOST:localhost}:${env.DB_PORT,env.DB_PORT:3306}/${env.DB_NAME,env.DB_NAME:ijts_recovery_db} \
+    --user-name=${env.DB_USER,env.DB_USER:root} \
+    --password=${env.DB_PASSWORD,env.DB_PASSWORD:} \
+    --valid-connection-checker-class-name=org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLValidConnectionChecker \
+    --exception-sorter-class-name=org.jboss.jca.adapters.jdbc.extensions.mysql.MySQLExceptionSorter \
+    --min-pool-size=2 \
+    --max-pool-size=10 \
+    --enabled=true \
+    --use-java-context=true
+
+stop-embedded-server
