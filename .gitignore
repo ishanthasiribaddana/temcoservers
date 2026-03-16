@@ -7,6 +7,7 @@
 backend/target/
 *.class
 *.jar
+!backend/modules/**/*.jar
 *.war
 *.ear
 
