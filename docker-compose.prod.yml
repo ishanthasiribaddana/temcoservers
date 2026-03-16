@@ -12,6 +12,23 @@ version: '3.8'
 
 services:
   # ---------------------------------------------------------------------------
+  # MariaDB Database
+  # ---------------------------------------------------------------------------
+  mariadb:
+    image: mariadb:11
+    container_name: temcoservers-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_PASSWORD}
+      MARIADB_DATABASE: ${DB_NAME:-ijts_recovery_db}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    networks:
+      - temco-network
+
+  # ---------------------------------------------------------------------------
   # Java EE Backend (WildFly 30)
   # ---------------------------------------------------------------------------
   backend:
@@ -21,7 +38,7 @@ services:
     container_name: temcoservers-backend
     restart: unless-stopped
     environment:
-      DB_HOST: ${DB_HOST:-temco-admin-mariadb}
+      DB_HOST: ${DB_HOST:-temcoservers-mariadb}
       DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME:-ijts_recovery_db}
       DB_USER: ${DB_USER:-root}
@@ -38,6 +55,7 @@ services:
       - temco-network
     depends_on:
       - ai-module
+      - mariadb
 
   # ---------------------------------------------------------------------------
   # Python AI Module (internal — same DB, called by backend)
@@ -49,7 +67,7 @@ services:
     container_name: temcoservers-ai-module
     restart: unless-stopped
     environment:
-      DB_HOST: ${DB_HOST:-temco-admin-mariadb}
+      DB_HOST: ${DB_HOST:-temcoservers-mariadb}
       DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME:-ijts_recovery_db}
       DB_USER: ${DB_USER:-root}
@@ -60,6 +78,8 @@ services:
       - "8580:8000"
     networks:
       - temco-network
+    depends_on:
+      - mariadb
 
   # ---------------------------------------------------------------------------
   # React Frontend (Nginx — production build)
@@ -76,6 +96,9 @@ services:
       - backend
     networks:
       - temco-network
+
+volumes:
+  mariadb-data:
 
 networks:
   temco-network:
