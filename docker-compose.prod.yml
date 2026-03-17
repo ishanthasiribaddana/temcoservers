@@ -3,11 +3,15 @@ version: '3.8'
 # =============================================================================
 # TemcoServers Platform - Production Docker Compose
 # =============================================================================
-# Deploys all 3 services on production server (194.163.130.223).
+# Deploys all 4 services on production server (194.163.130.223).
 # Frontend served via Nginx (production build), not Vite dev server.
-# All ports bound to 0.0.0.0 for external access.
 #
-# Usage: docker compose -f docker-compose.prod.yml up -d --build
+# CI/CD mode (normal): GitHub Actions builds images, SCPs to server,
+#   loads via docker load, tags as latest. No registry needed.
+#   Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Fallback mode (manual): Build from source on server.
+#   Usage: docker compose -f docker-compose.prod.yml up -d --build
 # =============================================================================
 
 services:
@@ -15,7 +19,7 @@ services:
   # MariaDB Database
   # ---------------------------------------------------------------------------
   mariadb:
-    image: mariadb:11
+    image: mariadb:11.8
     container_name: temcoservers-mariadb
     restart: unless-stopped
     environment:

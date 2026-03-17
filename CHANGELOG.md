@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] - 2026-03-17
+
+### Added
+- **CI/CD Pipeline** — GitHub Actions workflow triggered on tag push (v*)
+  - Builds 3 Docker images on GitHub runners (backend, AI module, frontend)
+  - SCP-based transfer to production (no container registry, no PAT tokens)
+  - Auto-loads images, restarts containers, runs DB migrations
+  - Automated health checks (backend, AI module, frontend, Docker status)
+  - Repo stays private, no expiring tokens
+
+### Changed
+- **AI Module Dockerfile** — Removed `--reload` from uvicorn CMD (dev-only flag, wastes CPU in production)
+- **Frontend Dockerfile.prod** — Pinned `nginx:1.27-alpine` (was unpinned `nginx:alpine` — prevents version drift between builds)
+- **docker-compose.prod.yml** — Pinned `mariadb:11.8` (was unpinned `mariadb:11`), updated header comments for CI/CD vs fallback mode
+
+### Files Changed
+- `.github/workflows/deploy.yml` — New CI/CD pipeline workflow
+- `ai-module/Dockerfile` — Removed `--reload` flag
+- `frontend/Dockerfile.prod` — Pinned nginx version
+- `docker-compose.prod.yml` — Pinned MariaDB version, updated comments
+- `frontend/src/version.js` — Bumped to v1.3.0
+
+---
+
 ## [1.2.0] - 2026-03-17
 
 ### Added

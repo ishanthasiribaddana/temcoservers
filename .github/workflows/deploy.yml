@@ -1,0 +1,148 @@
+# =============================================================================
+# TemcoServers Platform — CI/CD Pipeline
+# =============================================================================
+# Triggered on tag push (v*). Builds Docker images on GitHub runners,
+# SCPs them to production server, loads and restarts containers.
+# No container registry (GHCR) needed — repo can stay private.
+# =============================================================================
+
+name: Deploy to Production
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build Docker images and SCP to production
+  # ---------------------------------------------------------------------------
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      # --- Build all 3 Docker images ---
+      - name: Build backend image
+        run: docker build -t temcoservers-backend:${{ steps.version.outputs.VERSION }} ./backend
+
+      - name: Build AI module image
+        run: docker build -t temcoservers-ai-module:${{ steps.version.outputs.VERSION }} ./ai-module
+
+      - name: Build frontend image
+        run: docker build -t temcoservers-frontend:${{ steps.version.outputs.VERSION }} -f ./frontend/Dockerfile.prod ./frontend
+
+      # --- Save images as compressed tarballs ---
+      - name: Save and compress Docker images
+        run: |
+          VERSION=${{ steps.version.outputs.VERSION }}
+          echo "=== Saving backend image ==="
+          docker save temcoservers-backend:${VERSION} | gzip > backend.tar.gz
+          echo "=== Saving AI module image ==="
+          docker save temcoservers-ai-module:${VERSION} | gzip > ai-module.tar.gz
+          echo "=== Saving frontend image ==="
+          docker save temcoservers-frontend:${VERSION} | gzip > frontend.tar.gz
+          echo "=== Image sizes ==="
+          ls -lh *.tar.gz
+
+      # --- Setup SSH ---
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      # --- SCP images to production ---
+      - name: Transfer images to production server
+        run: |
+          SCP_CMD="scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+          TARGET="${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/temcoservers/"
+          echo "=== Transferring backend image ==="
+          $SCP_CMD backend.tar.gz $TARGET
+          echo "=== Transferring AI module image ==="
+          $SCP_CMD ai-module.tar.gz $TARGET
+          echo "=== Transferring frontend image ==="
+          $SCP_CMD frontend.tar.gz $TARGET
+          echo "=== Transfer complete ==="
+
+      # --- Load images and restart containers ---
+      - name: Deploy on production server
+        env:
+          SSH_CMD: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          echo "=== Loading Docker images ==="
+          $SSH_CMD "cd /opt/temcoservers && docker load < backend.tar.gz && docker load < ai-module.tar.gz && docker load < frontend.tar.gz"
+
+          echo "=== Tagging images for docker-compose ==="
+          $SSH_CMD "docker tag temcoservers-backend:${VERSION} temcoservers-backend:latest && docker tag temcoservers-ai-module:${VERSION} temcoservers-ai-module:latest && docker tag temcoservers-frontend:${VERSION} temcoservers-frontend:latest"
+
+          echo "=== Restarting containers ==="
+          $SSH_CMD "cd /opt/temcoservers && docker compose -f docker-compose.prod.yml up -d"
+
+          echo "=== Cleaning up tarballs and old images ==="
+          $SSH_CMD "cd /opt/temcoservers && rm -f backend.tar.gz ai-module.tar.gz frontend.tar.gz && docker image prune -f"
+
+      # --- Database migrations ---
+      - name: Run database migrations (if any)
+        env:
+          SSH_CMD: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          echo "=== Checking for migration files ==="
+          MIGRATION_FILES=$(find scripts/migrations/ -name "${VERSION}_*.sql" 2>/dev/null || true)
+          if [ -z "$MIGRATION_FILES" ]; then
+            echo "No migration files found for ${VERSION} — skipping"
+          else
+            echo "Found migration files: $MIGRATION_FILES"
+            for file in $MIGRATION_FILES; do
+              echo "Running migration: $file"
+              cat "$file" | $SSH_CMD "sudo mysql -u root -p'${{ secrets.DB_PASSWORD }}' ijts_recovery_db"
+            done
+            echo "All migrations completed"
+          fi
+
+      # --- Health checks ---
+      - name: Wait for services to start
+        run: sleep 30
+
+      - name: Health checks
+        env:
+          SSH_CMD: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: |
+          echo "=== Backend health check ==="
+          BACKEND_STATUS=$($SSH_CMD "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 http://localhost:8180/temcoservers/api/health" || echo "000")
+          echo "Backend: HTTP $BACKEND_STATUS"
+
+          echo "=== AI Module health check ==="
+          AI_STATUS=$($SSH_CMD "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 http://localhost:8580/health" || echo "000")
+          echo "AI Module: HTTP $AI_STATUS"
+
+          echo "=== Frontend health check ==="
+          FRONTEND_STATUS=$($SSH_CMD "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 http://localhost:3010/" || echo "000")
+          echo "Frontend: HTTP $FRONTEND_STATUS"
+
+          echo "=== Docker container status ==="
+          $SSH_CMD "docker ps --filter name=temcoservers --format 'table {{.Names}}\t{{.Status}}'"
+
+          echo ""
+          echo "=== Deployment Summary ==="
+          echo "Version: ${{ steps.version.outputs.VERSION }}"
+          echo "Backend:    $BACKEND_STATUS"
+          echo "AI Module:  $AI_STATUS"
+          echo "Frontend:   $FRONTEND_STATUS"
+
+          # Fail the job if frontend is down (most critical)
+          if [ "$FRONTEND_STATUS" != "200" ]; then
+            echo "::error::Frontend health check failed (HTTP $FRONTEND_STATUS)"
+            exit 1
+          fi

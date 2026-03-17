@@ -301,7 +301,7 @@ docker run -d --name temcoservers-ai-module --network temco-network -p 127.0.0.1
   - Commit: `b77aa9c`, 6 files changed (+499, -4)
   - All health checks passed, frontend container recreated
 
-### Session 7 — 2026-03-17 (v1.2.0 Development)
+### Session 7 — 2026-03-17 (v1.2.0 Development + Release)
 - [x] **Flyway Database Versioning**:
   - Added `flyway-core` + `flyway-mysql` dependencies to backend pom.xml
   - Created `FlywayMigrator.java` — `@Singleton @Startup` EJB runs migrations on deploy
@@ -357,6 +357,41 @@ docker run -d --name temcoservers-ai-module --network temco-network -p 127.0.0.1
   - `docker-compose.yml`: Added `uploads-data` volume for backend
   - `docker-compose.prod.yml`: Added `uploads-data` volume for both backend and frontend (Nginx)
 
+### Session 8 — 2026-03-17 (UI Polish + v1.2.0 Release)
+- [x] **Admin ↔ Dashboard Bidirectional Navigation**:
+  - Added "Admin Panel" link (Shield icon) in DashboardPage sidebar, visible only for Super Admin / System Admin
+  - Admin users can now toggle between `/admin` and `/dashboard` without re-logging in
+- [x] **Back to Website Navigation**:
+  - AdminPage + DashboardPage sidebar logos open landing page in new tab (`window.open('/', '_blank')`)
+  - Added "Back to Website" button (ExternalLink icon) in both sidebars
+- [x] **Password Visibility Toggle (Eye/EyeOff)**:
+  - Added to UserModal password field in AdminRbacTabs.jsx
+  - LoginPage already had it from Session 7
+- [x] **User Active/Inactive Toggle Switch**:
+  - Replaced static "Active"/"Inactive" text with green/gray toggle switch in UsersTab
+  - Bidirectional: click to activate or deactivate with confirmation dialog
+  - Uses `PUT /admin/rbac/users/{id}` instead of one-way `DELETE`
+- [x] **Forgot Password (Login Page)**:
+  - "Forgot Password?" link toggles a blue info box
+  - WhatsApp-based: "Send 'Reset My TemcoServers Password' to 0774 505 005"
+  - Phone number is clickable `wa.me` link with pre-filled message
+- [x] **Dashboard Tab-Based Rendering**:
+  - Overview: stats cards + compact server status list with "View All →" link
+  - My Servers: full server list with Start/Stop/Restart actions
+  - Profile: user info card (avatar, name, role, username, email, mobile, GUP/Login IDs)
+  - Terminal: "Coming soon" placeholder
+- [x] **RBAC Frontend Filtering**:
+  - Hide non-TemcoServers modules (only show ID 157)
+  - Hide non-TemcoServers pages (only show `TS` prefix)
+  - Hide non-TemcoServers roles (only show IDs 51, 52, 57)
+- [x] **Generic RBAC Setup Guide**:
+  - `docs/setup-admin-panel.md` rewritten as reusable document
+  - All JIAT/Recovery-specific references replaced with generic placeholders
+- [x] **v1.2.0 Released & Deployed to Production**:
+  - Commit: `9231060`, 25 files changed (+3,108, -44)
+  - All 4 containers running, all health checks passed
+  - Database: 251,346 user profiles
+
 ### Production Server Info
 | Property | Value |
 |----------|-------|
@@ -371,7 +406,7 @@ docker run -d --name temcoservers-ai-module --network temco-network -p 127.0.0.1
 | Nginx | 1.24.0 |
 | Domain | aihost.temcobank.com |
 | SSL | Cloudflare Flexible |
-| Latest Release | v1.1.0 (2026-03-17) |
+| Latest Release | v1.2.0 (2026-03-17) |
 | GitHub | https://github.com/ishanthasiribaddana/temcoservers |
 
 ### Production Docker Containers
@@ -388,7 +423,7 @@ temcoservers-mariadb     → port 3306  (MariaDB 11, ijts_recovery_db)
 | `admin` | `admin123` | Super Admin | `/admin` |
 | `teststudent` | `password123` | Server Customer | `/dashboard` |
 
-### Frontend Pages & Routes (v1.1.0)
+### Frontend Pages & Routes (v1.2.0)
 | Page | Route | Auth |
 |------|-------|------|
 | LandingPage | `/` | No |
@@ -401,11 +436,11 @@ temcoservers-mariadb     → port 3306  (MariaDB 11, ijts_recovery_db)
 | PaymentPage | `/payment` | Yes |
 
 ### Current Step
-**v1.1.0 deployed. Session 7 complete: Flyway, bank slip upload, invoice PDF, RBAC Admin Panel all implemented locally. Ready for v1.2.0 release.**
+**v1.2.0 deployed to production. RBAC Admin Panel, Flyway migrations, bank slip upload, invoice PDF, UI navigation fixes all live.**
 
 ### Pending / Next Steps
-- [ ] Release v1.2.0 (Flyway + bank slip upload + invoice PDF + RBAC Admin Panel)
-- [ ] Test full bank slip upload + invoice generation flow locally before release
 - [ ] Add DEEPSEEK_API_KEY or OPENAI_API_KEY to AI module for live code generation
 - [ ] Configure nightly replication: `ijts_system` → `ijts_recovery_db`
 - [ ] Production Nginx config for serving uploads volume (`/uploads/` location block)
+- [ ] Email-based password reset (v1.3.0+ — requires SMTP setup)
+- [ ] Test full bank slip upload + invoice generation flow on production
