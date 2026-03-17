@@ -124,6 +124,115 @@ public class BillingService {
         return result;
     }
 
+    /**
+     * Process a bank slip upload:
+     * 1. Create voucher (invoice header)
+     * 2. Create voucher_item for debit (bank) entry
+     * 3. Create voucher_item for credit (revenue) entry
+     * 4. Create ts_voucher_item_slip record linking the receipt to the uploaded file
+     */
+    public Map<String, Object> uploadSlip(int gupId, int loginId, String purchaserName,
+                                           String referenceNo, double amount, String product,
+                                           String slipUrl, String originalFilename, int fileSize) {
+
+        // Map product slug to sub_chart_of_account is_sca IDs (from V2 migration seed)
+        int revenueScaId;
+        String planLabel;
+        switch (product) {
+            case "starter":       revenueScaId = 1; planLabel = "Starter Plan"; break;
+            case "ai-basic":      revenueScaId = 2; planLabel = "AI Basic Plan"; break;
+            case "ai-pro":        revenueScaId = 3; planLabel = "AI Pro Plan"; break;
+            case "ai-unlimited":  revenueScaId = 4; planLabel = "AI Unlimited Plan"; break;
+            default: throw new IllegalArgumentException("Invalid product: " + product);
+        }
+
+        // Bank deposit sub-account (default: Nations Trust Bank = is_sca 6)
+        int bankScaId = 6;
+
+        String voucherId = "SSP-" + loginId + "-" + System.currentTimeMillis();
+
+        // 1. Create voucher (invoice header) — is_completed=0 (pending verification)
+        em.createNativeQuery(
+                "INSERT INTO voucher (id, description, date, voucher_total, " +
+                "general_user_profilegup_id, voucher_typevt_id, login_sessionsession_id, " +
+                "user_loginlogin_id, branch_bid, is_active, payment_date, total_paid, is_completed, " +
+                "payment_mode_payment_mode_id, time, created_at) " +
+                "VALUES (:vid, :desc, CURDATE(), :total, :gupId, 1, 1, :loginId, 1, 1, CURDATE(), :total, 0, 1, CURTIME(), NOW())")
+                .setParameter("vid", voucherId)
+                .setParameter("desc", planLabel + " - " + purchaserName + " (Ref: " + referenceNo + ")")
+                .setParameter("total", amount)
+                .setParameter("gupId", gupId)
+                .setParameter("loginId", loginId)
+                .executeUpdate();
+
+        // Get the newly created voucher vid
+        Object vidObj = em.createNativeQuery("SELECT vid FROM voucher WHERE id = :vid")
+                .setParameter("vid", voucherId)
+                .getSingleResult();
+        int vid = ((Number) vidObj).intValue();
+
+        // 2. Create voucher_item: DEBIT bank account
+        String debitItemId = voucherId + "-DR";
+        em.createNativeQuery(
+                "INSERT INTO voucher_item (id, description, date, is_active, amount, " +
+                "vouchervid, voucher_typevt_id, user_loginlogin_id, login_sessionsession_id, " +
+                "sub_chart_of_accountis_sca, bank_reference_no, payment_mode_payment_mode_id, " +
+                "qty, unit_price, to_be_paid_amount, created_at) " +
+                "VALUES (:itemId, :desc, CURDATE(), 1, :amount, :vid, 1, :loginId, 1, " +
+                ":scaId, :refNo, 1, 1, :amount, :amount, NOW())")
+                .setParameter("itemId", debitItemId)
+                .setParameter("desc", "Bank Transfer - " + planLabel)
+                .setParameter("amount", amount)
+                .setParameter("vid", vid)
+                .setParameter("loginId", loginId)
+                .setParameter("scaId", bankScaId)
+                .setParameter("refNo", referenceNo)
+                .executeUpdate();
+
+        // Get the debit voucher_item vi_id (for linking the slip)
+        Object debitViIdObj = em.createNativeQuery("SELECT vi_id FROM voucher_item WHERE id = :itemId")
+                .setParameter("itemId", debitItemId)
+                .getSingleResult();
+        int debitViId = ((Number) debitViIdObj).intValue();
+
+        // 3. Create voucher_item: CREDIT revenue account
+        String creditItemId = voucherId + "-CR";
+        em.createNativeQuery(
+                "INSERT INTO voucher_item (id, description, date, is_active, amount, " +
+                "vouchervid, voucher_typevt_id, user_loginlogin_id, login_sessionsession_id, " +
+                "sub_chart_of_accountis_sca, qty, unit_price, to_be_paid_amount, created_at) " +
+                "VALUES (:itemId, :desc, CURDATE(), 1, :amount, :vid, 1, :loginId, 1, " +
+                ":scaId, 1, :amount, :amount, NOW())")
+                .setParameter("itemId", creditItemId)
+                .setParameter("desc", planLabel + " Subscription Revenue")
+                .setParameter("amount", amount)
+                .setParameter("vid", vid)
+                .setParameter("loginId", loginId)
+                .setParameter("scaId", revenueScaId)
+                .executeUpdate();
+
+        // 4. Create ts_voucher_item_slip (link slip to debit voucher_item)
+        em.createNativeQuery(
+                "INSERT INTO ts_voucher_item_slip (voucher_item_vi_id, slip_url, original_filename, " +
+                "file_size, uploaded_by_login_id, verification_status, created_at) " +
+                "VALUES (:viId, :slipUrl, :filename, :fileSize, :loginId, 'pending', NOW())")
+                .setParameter("viId", debitViId)
+                .setParameter("slipUrl", slipUrl)
+                .setParameter("filename", originalFilename)
+                .setParameter("fileSize", fileSize)
+                .setParameter("loginId", loginId)
+                .executeUpdate();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("message", "Payment slip uploaded successfully");
+        result.put("voucherId", voucherId);
+        result.put("referenceNo", referenceNo);
+        result.put("amount", amount);
+        result.put("product", planLabel);
+        result.put("status", "pending");
+        return result;
+    }
+
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getUserPaymentHistory(int gupId) {
         Query q = em.createNativeQuery(

@@ -49,6 +49,8 @@ services:
       CONTABO_API_USER: ${CONTABO_API_USER}
       CONTABO_API_PASSWORD: ${CONTABO_API_PASSWORD}
       AI_MODULE_URL: http://temcoservers-ai-module:8000
+    volumes:
+      - uploads-data:/opt/temcoservers/uploads
     ports:
       - "8180:8080"
     networks:
@@ -90,6 +92,8 @@ services:
       dockerfile: Dockerfile.prod
     container_name: temcoservers-frontend
     restart: unless-stopped
+    volumes:
+      - uploads-data:/usr/share/nginx/uploads:ro
     ports:
       - "3010:80"
     depends_on:
@@ -99,6 +103,7 @@ services:
 
 volumes:
   mariadb-data:
+  uploads-data:
 
 networks:
   temco-network:

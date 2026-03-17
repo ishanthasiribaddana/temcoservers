@@ -52,6 +52,7 @@ function PaymentPage() {
   const [copied, setCopied] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [invoiceUrl, setInvoiceUrl] = useState(null)
   const [error, setError] = useState('')
 
   const [form, setForm] = useState({
@@ -108,9 +109,10 @@ function PaymentPage() {
       formData.append('timestamp', new Date().toISOString())
       formData.append('slip', form.file)
 
-      await api.post('/billing/upload-slip', formData, {
+      const res = await api.post('/billing/upload-slip', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+      if (res.data?.invoiceUrl) setInvoiceUrl(res.data.invoiceUrl)
       setSubmitted(true)
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit payment. Please try again.')
@@ -132,15 +134,31 @@ function PaymentPage() {
           <p className="text-gray-500 mb-6">
             Your bank slip has been received. Our team will verify the payment and activate your plan within 24 hours.
           </p>
-          <p className="text-xs text-gray-400 mb-6">
+          <p className="text-xs text-gray-400 mb-4">
             Reference: <span className="font-mono font-medium text-gray-600">{form.referenceNo}</span>
           </p>
-          <button
-            onClick={() => navigate('/dashboard')}
-            className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition"
-          >
-            Go to Dashboard
-          </button>
+          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-6">
+            Verification is pending and may take up to 24 hours as we reconcile with bank statements.
+          </p>
+          <div className="flex flex-col gap-3">
+            {invoiceUrl && (
+              <a
+                href={invoiceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition"
+              >
+                <FileText className="w-4 h-4" />
+                Download Invoice
+              </a>
+            )}
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="px-6 py-2.5 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition"
+            >
+              Go to Dashboard
+            </button>
+          </div>
         </div>
       </div>
     )

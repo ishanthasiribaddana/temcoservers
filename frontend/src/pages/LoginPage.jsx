@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Server, Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import api from '../api/config'
 
 function LoginPage() {
@@ -10,6 +10,7 @@ function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showForgotMsg, setShowForgotMsg] = useState(false)
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -37,9 +38,9 @@ function LoginPage() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link to="/" className="inline-flex items-center gap-2 mb-4">
-            <Server className="w-8 h-8 text-primary-500" />
-            <span className="text-2xl font-bold"><span className="text-primary-500">Temco</span><span className="text-gray-900">Servers</span></span>
+          <Link to="/" className="inline-flex items-end gap-2 mb-4">
+            <img src="/images/temco-logo-sm.png" alt="Temco" className="h-9 w-auto" />
+            <span className="text-xl font-semibold tracking-tight text-gray-800 leading-none" style={{ fontFamily: 'Inter, sans-serif' }}>Servers</span>
           </Link>
           <p className="text-gray-500 text-sm">Sign in to manage your servers & AI tools</p>
         </div>
@@ -83,6 +84,19 @@ function LoginPage() {
               </button>
             </div>
           </div>
+
+          <div className="flex justify-end mb-4 -mt-2">
+            <button type="button" onClick={() => setShowForgotMsg(!showForgotMsg)}
+              className="text-xs text-primary-500 hover:text-primary-600 transition">
+              Forgot Password?
+            </button>
+          </div>
+
+          {showForgotMsg && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              To reset your password, send a WhatsApp message saying <strong>"Reset My TemcoServers Password"</strong> to <a href="https://wa.me/94774505005?text=Reset%20My%20TemcoServers%20Password" target="_blank" rel="noopener noreferrer" className="font-semibold underline hover:text-blue-900">0774 505 005</a> using your registered phone number.
+            </div>
+          )}
 
           <button
             type="submit"

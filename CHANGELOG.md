@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-03-17
+
+### Added
+- **RBAC Admin Panel** — Full role-based access control with 3 management tabs
+  - **User Management** — Create, edit, activate/deactivate users with toggle switch, reset login attempts, GUP search, password visibility toggle (Eye/EyeOff)
+  - **Roles & Permissions** — Create/edit roles, assign pages and modules per role
+  - **Modules & Pages** — Create/edit system interfaces and modules, assign pages to modules
+  - Frontend-only filtering to hide non-TemcoServers modules/pages/roles from shared DB
+- **Flyway Database Migrations** — Auto-run on startup via `FlywayMigrator` EJB
+  - V1: `ts_voucher_item_slip` table for bank slip uploads
+  - V2: Chart of accounts and payment modes seed data
+  - V3: TemcoServers RBAC pages (si_id 501-506), module (uc_id 157), interface menu (if_id 63)
+- **Bank Slip Upload** — File upload endpoint with voucher item association
+- **Invoice PDF Generation** — iText-based PDF invoices with Java Institute branding
+- **Forgot Password** — WhatsApp-based password reset contact on login page (0774 505 005)
+- **Dashboard Tab Navigation** — Profile, Terminal (coming soon), separate Overview vs My Servers content
+- **Admin Panel ↔ Dashboard Toggle** — Bidirectional navigation for admin users (Shield icon link)
+- **Back to Website** — New-tab links in Admin and Dashboard sidebars (ExternalLink icon)
+- **Generic RBAC Setup Guide** — `docs/setup-admin-panel.md` rewritten as reusable document
+
+### Changed
+- **AdminPage sidebar** — Logo opens landing page in new tab, added "Back to Website" button
+- **DashboardPage** — Tab-based rendering (Overview shows stats + compact server list, My Servers shows full list with actions, Profile shows user info card)
+- **LoginPage** — Added "Forgot Password?" with WhatsApp admin contact message
+- **Docker Compose** — Updated for Flyway and new backend dependencies
+- **Nginx config** — Updated for production routing
+
+### Files Changed
+- `backend/pom.xml` — added iText PDF, Flyway, BCrypt dependencies
+- `backend/src/main/java/com/temcoservers/config/FlywayMigrator.java` — new Flyway startup EJB
+- `backend/src/main/java/com/temcoservers/entity/TsVoucherItemSlip.java` — new bank slip entity
+- `backend/src/main/java/com/temcoservers/service/InvoicePdfGenerator.java` — new PDF generator
+- `backend/src/main/java/com/temcoservers/rest/AdminResource.java` — 17+ RBAC REST endpoints
+- `backend/src/main/java/com/temcoservers/service/AdminService.java` — ~20 RBAC service methods
+- `backend/src/main/java/com/temcoservers/rest/BillingResource.java` — bank slip upload endpoint
+- `backend/src/main/java/com/temcoservers/service/BillingService.java` — billing service updates
+- `backend/src/main/java/com/temcoservers/service/NotificationService.java` — notification updates
+- `backend/src/main/resources/db/migration/V1__create_ts_voucher_item_slip.sql` — new migration
+- `backend/src/main/resources/db/migration/V2__seed_chart_of_accounts_and_payment_modes.sql` — new migration
+- `backend/src/main/resources/db/migration/V3__register_temcoservers_pages.sql` — new migration
+- `backend/src/main/resources/images/java-institute-logo.png` — invoice branding asset
+- `frontend/src/pages/AdminPage.jsx` — merged RBAC tabs, navigation updates
+- `frontend/src/pages/AdminRbacTabs.jsx` — new RBAC management component
+- `frontend/src/pages/DashboardPage.jsx` — tab-based rendering, Profile tab, Admin Panel link
+- `frontend/src/pages/LoginPage.jsx` — Forgot Password with WhatsApp contact
+- `frontend/src/pages/PaymentPage.jsx` — billing page updates
+- `frontend/src/version.js` — bumped to v1.2.0
+- `docs/setup-admin-panel.md` — new generic RBAC setup guide
+- `docker-compose.yml` / `docker-compose.prod.yml` — updated
+- `frontend/nginx.conf` — updated
+- `current_status_temcoservers.md` — updated
+
+---
+
 ## [1.1.0] - 2026-03-17
 
 ### Added

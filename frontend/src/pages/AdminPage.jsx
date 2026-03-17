@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import {
   Server, Code, LogOut, User, CreditCard, Activity, Users, BarChart3,
   Search, ChevronLeft, ChevronRight, Globe, Cpu, Circle, DollarSign,
-  Shield, Loader2, RefreshCw, LayoutDashboard
+  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink
 } from 'lucide-react'
 import api from '../api/config'
 import { APP_VERSION } from '../version'
+import { UsersTab, RolesTab, ModulesPagesTab } from './AdminRbacTabs'
 
 function AdminPage() {
   const navigate = useNavigate()
@@ -96,6 +97,9 @@ function AdminPage() {
     { icon: Users, label: 'Customers', tab: 'customers' },
     { icon: Server, label: 'Servers', tab: 'servers' },
     { icon: CreditCard, label: 'Revenue', tab: 'revenue' },
+    { icon: Users, label: 'User Mgmt', tab: 'rbac-users', section: true },
+    { icon: Shield, label: 'Roles & Perms', tab: 'rbac-roles' },
+    { icon: Activity, label: 'Modules & Pages', tab: 'rbac-modules' },
   ]
 
   const statusColor = (status) => {
@@ -110,7 +114,7 @@ function AdminPage() {
     <div className="min-h-screen bg-gray-100 text-gray-900">
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 p-6 flex flex-col shadow-sm z-10">
-        <div className="flex items-end gap-0.5 mb-2">
+        <div className="flex items-end gap-0.5 mb-2 cursor-pointer" onClick={() => window.open('/', '_blank')}>
           <img src="/images/temco-logo-sm.png" alt="Temco" className="h-8 w-auto" />
           <span className="text-lg font-semibold tracking-tight text-gray-800 leading-none" style={{ fontFamily: "'Inter', sans-serif" }}>Servers</span>
         </div>
@@ -121,18 +125,24 @@ function AdminPage() {
 
         <nav className="flex-1 space-y-1">
           {navItems.map((item, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveTab(item.tab)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
-                activeTab === item.tab
-                  ? 'bg-accent-50 text-accent-600 border border-accent-200 font-medium'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              <item.icon className="w-4 h-4" />
-              {item.label}
-            </button>
+            <div key={i}>
+              {item.section && (
+                <div className="pt-3 pb-1 mt-2 border-t border-gray-200">
+                  <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Access Control</span>
+                </div>
+              )}
+              <button
+                onClick={() => setActiveTab(item.tab)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+                  activeTab === item.tab
+                    ? 'bg-accent-50 text-accent-600 border border-accent-200 font-medium'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <item.icon className="w-4 h-4" />
+                {item.label}
+              </button>
+            </div>
           ))}
 
           <div className="pt-4 border-t border-gray-200 mt-4">
@@ -156,6 +166,10 @@ function AdminPage() {
               <div className="text-xs text-accent-500 font-medium truncate">{user.role}</div>
             </div>
           </div>
+          <button onClick={() => window.open('/', '_blank')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-500 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition">
+            <ExternalLink className="w-4 h-4" />
+            Back to Website
+          </button>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition">
             <LogOut className="w-4 h-4" />
             Sign Out
@@ -431,6 +445,39 @@ function AdminPage() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* RBAC — Users Tab */}
+        {activeTab === 'rbac-users' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-accent-500 to-primary-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">User Management</h2>
+              <UsersTab />
+            </div>
+          </div>
+        )}
+
+        {/* RBAC — Roles & Permissions Tab */}
+        {activeTab === 'rbac-roles' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-primary-500 to-accent-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Roles & Permissions</h2>
+              <RolesTab />
+            </div>
+          </div>
+        )}
+
+        {/* RBAC — Modules & Pages Tab */}
+        {activeTab === 'rbac-modules' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-temco-500 to-accent-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Modules & Pages</h2>
+              <ModulesPagesTab />
             </div>
           </div>
         )}

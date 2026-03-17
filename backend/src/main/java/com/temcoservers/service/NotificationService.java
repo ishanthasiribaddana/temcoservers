@@ -49,10 +49,16 @@ public class NotificationService {
         sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_SUBSCRIPTION_RENEWAL, content);
     }
 
-    public void notifyPaymentReceived(int adminGupId, int userGupId, double amount, String planName) {
+    public void notifyPaymentReceived(int adminGupId, int userGupId, double amount,
+                                      String planName, String invoiceUrl) {
+        String invoiceLink = (invoiceUrl != null)
+                ? String.format(" Download your payment acknowledgement: %s", invoiceUrl)
+                : "";
         String content = String.format(
-                "Payment of $%.2f received for your '%s' subscription. Thank you!",
-                amount, planName);
+                "Payment of LKR %.2f has been submitted for your '%s' subscription. " +
+                "Verification is pending and may take up to 24 hours as we reconcile with bank statements. " +
+                "You will be notified once your payment is confirmed.%s Thank you!",
+                amount, planName, invoiceLink);
         sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_PAYMENT_REMINDER, content);
     }
 

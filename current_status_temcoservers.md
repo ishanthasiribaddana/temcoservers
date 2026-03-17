@@ -29,7 +29,7 @@ Resells Contabo VPS instances with AI code generation add-ons.
 | React Frontend | 5173          | 3010          | Running   |
 | WildFly Backend| 8080          | 8180          | Running   |
 | Python AI      | 8000          | 8580          | Running   |
-| MariaDB        | 3306          | (existing)    | Running   |
+| MariaDB        | 3306          | 3306          | Running   |
 
 ## Ports to AVOID (already in use on host)
 135, 139, 445, 3000, 3001, 3002, 3006, 3306, 3308, 3500, 5040, 5357, 6379,
@@ -56,7 +56,9 @@ Resells Contabo VPS instances with AI code generation add-ons.
 - **DB Root Password**: (see .env.production)
 - **Reused tables**: general_user_profile, user_login, user_role, student, branch, voucher, voucher_type, voucher_item, communication_history, communication_type, communication_purpose
 - **New tables**: Prefixed with `ts_` — MUST consult user before adding any new table
-- **Created tables**: ts_subscription_plan (seeded with 4 plans), ts_server_instance, ts_subscription, ts_ai_usage, ts_ai_conversation, ts_ai_message, ts_server_action_log
+- **Created tables**: ts_subscription_plan (seeded with 4 plans), ts_server_instance, ts_subscription, ts_ai_usage, ts_ai_conversation, ts_ai_message, ts_server_action_log, ts_voucher_item_slip (Flyway V1)
+- **Flyway migrations**: V1 (ts_voucher_item_slip), V2 (seed chart of accounts + payment modes), V3 (register TemcoServers pages/module/menu)
+- **Flyway schema history**: `flyway_schema_history` table, baselined at version 0
 - **Added role**: "Server Customer" (ur_id: 57) in user_role
 - **Added comm purposes**: Server Provisioned, Subscription Renewal, AI Usage Alert
 
@@ -177,10 +179,10 @@ Resells Contabo VPS instances with AI code generation add-ons.
 - [x] Backend services: AuthService, ContaboService, AdminService, BillingService, NotificationService
 - [x] Backend REST: HealthResource, AuthResource, ServerInstanceResource, AdminResource, BillingResource, NotificationResource
 
-### Test Credentials
+### Test Credentials (Local)
 | Username | Password | Role | Destination | gup_id | login_id |
 |----------|----------|------|-------------|--------|----------|
-| `admin` | `password123` | Super Admin | `/admin` | 258018 | 41102 |
+| `admin` | `admin123` | Super Admin | `/admin` | 258018 | 41102 |
 | `teststudent` | `password123` | Server Customer | `/dashboard` | 258017 | 41101 |
 
 ### Docker Containers Running
@@ -247,6 +249,114 @@ docker run -d --name temcoservers-ai-module --network temco-network -p 127.0.0.1
   - Production server cloned to `/opt/temcoservers` (owned by `deploy` user)
 - [x] **release.md Updated** to use `deploy` user via SSH alias instead of root
 
+### Session 5 — 2026-03-16 (v1.0.0 Release)
+- [x] **v1.0.0 Released & Deployed to Production**:
+  - Tagged `v1.0.0`, pushed to GitHub, deployed via SSH to `/opt/temcoservers`
+  - All 4 Docker containers running: backend, ai-module, frontend, mariadb
+  - Production database: `ijts_recovery_db` with 981 tables, 251K+ user profiles
+  - Health checks passed: backend UP, AI module UP, frontend 200
+- [x] **Domain & SSL via Cloudflare**:
+  - Domain: `aihost.temcobank.com`
+  - Cloudflare A record → 194.163.130.223 (Proxied)
+  - SSL mode: Flexible (Browser↔Cloudflare HTTPS, Cloudflare↔Server HTTP port 80)
+  - Fixed Error 521 by switching from Full to Flexible SSL mode
+- [x] **Production Nginx Reverse Proxy**:
+  - Host Nginx on port 80 proxies to Docker containers
+  - `/` → frontend:3010, `/temcoservers/api/` → backend:8180, `/ai/` → ai:8580
+- [x] **Admin Login Fixed on Production**:
+  - Generated bcrypt hash with Python, fixed `$2b$` → `$2a$` prefix for Java BCrypt compatibility
+  - Updated admin password via SQL file SCP'd to server
+  - Admin login: `admin` / `admin123` → `/admin`
+- [x] **Production Credentials Updated**:
+  - Admin password changed from `password123` to `admin123`
+  - Student test: `teststudent` / `password123`
+
+### Session 6 — 2026-03-17 (v1.1.0 Release)
+- [x] **LKR Currency Conversion Badges**:
+  - Fetches USD→LKR rate from `open.er-api.com` on page load
+  - Applies ~2% markup for approximate bank selling rate
+  - Displayed as gradient pill badges (blue-to-pink) under each plan's USD price
+  - Shows: 🇱🇰 LKR {amount}/month
+- [x] **Competitor Price Comparison Section**:
+  - "How We Compare" table between Pricing and Partners sections
+  - Compares TemcoServers vs GitHub Copilot, AWS, Google Cloud, Azure
+  - Feature columns: Cloud VPS, AI Assistant, Dev Tools, Student Plan
+  - Green "Save X%" badges on competitor rows (64%-80% savings)
+  - TemcoServers row highlighted with gradient background
+- [x] **Payment Page (`/payment`)**:
+  - Bank transfer details: Nations Trust Bank (Nawala), Sampath Bank (Gangodawila), Commercial Bank (Reid Avenue)
+  - Account name: Java Institute Holdings (Pvt) Ltd
+  - Copy-to-clipboard for account numbers
+  - Bank slip upload form: Purchaser Name (auto-filled), Reference Number, Amount (LKR), Plan (dropdown), Bank Slip (file upload, max 5MB)
+  - Login required; plan pre-selected via `?plan=<slug>` query param
+  - Success confirmation screen with reference number
+  - Backend endpoint not yet wired (frontend-only in this release)
+- [x] **Java Institute Logo**:
+  - Replaced JRIRC Building2 icon with actual Java Institute logo
+  - Logo asset: `frontend/public/images/java-institute-logo.png`
+- [x] **Pricing Plan Links Updated**:
+  - "Get Started" buttons now link to `/payment?plan=<slug>` instead of `/login`
+  - Each plan has a `slug` field: starter, ai-basic, ai-pro, ai-unlimited
+- [x] **v1.1.0 Released & Deployed to Production**:
+  - Commit: `b77aa9c`, 6 files changed (+499, -4)
+  - All health checks passed, frontend container recreated
+
+### Session 7 — 2026-03-17 (v1.2.0 Development)
+- [x] **Flyway Database Versioning**:
+  - Added `flyway-core` + `flyway-mysql` dependencies to backend pom.xml
+  - Created `FlywayMigrator.java` — `@Singleton @Startup` EJB runs migrations on deploy
+  - Uses existing `TemcoServersDS` datasource, baselines at version 0
+  - Migration location: `classpath:db/migration`
+  - V1: `ts_voucher_item_slip` table (1:1 link to voucher_item for bank slip URLs)
+  - V2: Seed `account_type`, `main_chart_of_account`, `chart_of_account`, `scoa_type`, `payment_mode`
+  - V3: Register TemcoServers pages (si_id 501-506), interface_menu (if_id 63), module (uc_id 157), role↔page mappings
+- [x] **Bank Slip Upload Backend**:
+  - `TsVoucherItemSlip.java` — JPA entity for slip table
+  - `BillingService.uploadSlip()` — creates voucher + voucher_items (debit bank, credit revenue) + slip record
+  - `BillingResource POST /billing/upload-slip` — multipart file upload, saves to `/opt/temcoservers/uploads/slips/`
+  - Docker volume `uploads-data` mounted to backend container (local + prod)
+  - Nginx location block for serving `/uploads/` from shared volume
+  - File size limit: 5MB, accepts JPEG/PNG/PDF
+- [x] **Invoice PDF Generation**:
+  - Added OpenPDF dependency to pom.xml
+  - `InvoicePdfGenerator.java` — EJB service generating payment acknowledgement PDFs
+  - Features: Java Institute logo, payment details, "PENDING VERIFICATION" watermark, bank account info, disclaimer
+  - Saved to `/opt/temcoservers/uploads/invoices/INV-{voucherId}.pdf`
+  - Invoice URL included in notification message and API response
+- [x] **Notification System Updated**:
+  - `notifyPaymentReceived()` updated to LKR currency format
+  - Includes invoice download URL in notification message
+  - Sender hardcoded as "System Account" (temporary until GUP created)
+- [x] **Frontend PaymentPage Updated**:
+  - Captures `invoiceUrl` from API response
+  - Shows "Download Invoice" button on upload success screen
+- [x] **Login Page Logo Updated**:
+  - Replaced `Server` icon with Temco logo image matching LandingPage navbar style
+- [x] **RBAC Admin Panel (per `docs/setup-admin-panel.md`)**:
+  - Backend `AdminService.java` extended with ~20 RBAC methods:
+    - Users: `getUsers`, `getUserById`, `createUser`, `updateUser`, `deleteUser`, `resetLoginAttempts`
+    - Roles: `getRoles`, `createRole`, `updateRole`, `setRolePages`, `setRoleModules`
+    - Modules: `getModules`, `createModule`, `updateModule`, `setModulePages`
+    - Pages: `getSystemInterfaces`, `createSystemInterface`
+    - Other: `getPrivileges`, `searchGup`, `assignUserModulesFromRole`
+  - Backend `AdminResource.java` extended with 17+ REST endpoints under `/admin/rbac/*`
+  - Frontend `AdminRbacTabs.jsx` — new file with `UsersTab`, `RolesTab`, `ModulesPagesTab` components
+  - `AdminPage.jsx` merged to **7 tabs** (4 existing + 3 RBAC):
+    - Business Ops: Overview, Customers, Servers, Revenue
+    - Access Control: User Mgmt, Roles & Perms, Modules & Pages
+  - Sidebar has "Access Control" section divider
+  - User Management: searchable table, Create/Edit modal with GUP search, role select, privilege toggles, password, active toggle, deactivate, reset login attempts
+  - Roles & Perms: expandable role cards with page/module access toggle buttons (instant save)
+  - Modules & Pages: expandable module cards with page assignment toggles, registered pages table, inline page creation form
+  - Uses existing `axios + useState` pattern (no React Query)
+- [x] **Local Admin Login Fixed**:
+  - Updated bcrypt password hashes in local `temco-admin-mariadb`
+  - Admin: `admin123` hash copied from production
+  - Student: `password123` hash generated with Python bcrypt (`$2b$` → `$2a$` prefix fix)
+- [x] **Docker Compose Updated**:
+  - `docker-compose.yml`: Added `uploads-data` volume for backend
+  - `docker-compose.prod.yml`: Added `uploads-data` volume for both backend and frontend (Nginx)
+
 ### Production Server Info
 | Property | Value |
 |----------|-------|
@@ -259,13 +369,43 @@ docker run -d --name temcoservers-ai-module --network temco-network -p 127.0.0.1
 | Project Path | `/opt/temcoservers` |
 | Docker | 28.2.2 + Compose v5.1.0 |
 | Nginx | 1.24.0 |
+| Domain | aihost.temcobank.com |
+| SSL | Cloudflare Flexible |
+| Latest Release | v1.1.0 (2026-03-17) |
+| GitHub | https://github.com/ishanthasiribaddana/temcoservers |
+
+### Production Docker Containers
+```
+temcoservers-frontend    → port 3010  (Nginx + React dist)
+temcoservers-backend     → port 8180  (WildFly 30, temcoservers.war)
+temcoservers-ai-module   → port 8580  (FastAPI, uvicorn)
+temcoservers-mariadb     → port 3306  (MariaDB 11, ijts_recovery_db)
+```
+
+### Production Test Credentials
+| Username | Password | Role | Destination |
+|----------|----------|------|-------------|
+| `admin` | `admin123` | Super Admin | `/admin` |
+| `teststudent` | `password123` | Server Customer | `/dashboard` |
+
+### Frontend Pages & Routes (v1.1.0)
+| Page | Route | Auth |
+|------|-------|------|
+| LandingPage | `/` | No |
+| LoginPage | `/login` | No |
+| DashboardPage | `/dashboard` | Yes |
+| AiAssistantPage | `/ai` | Yes |
+| AdminPage | `/admin` | Yes (Admin) |
+| BillingPage | `/billing` | Yes |
+| NotificationsPage | `/notifications` | Yes |
+| PaymentPage | `/payment` | Yes |
 
 ### Current Step
-**All features built. Server hardened. Repo on GitHub. Ready for first `/release` deployment once `.env.production` is created with real credentials.**
+**v1.1.0 deployed. Session 7 complete: Flyway, bank slip upload, invoice PDF, RBAC Admin Panel all implemented locally. Ready for v1.2.0 release.**
 
 ### Pending / Next Steps
+- [ ] Release v1.2.0 (Flyway + bank slip upload + invoice PDF + RBAC Admin Panel)
+- [ ] Test full bank slip upload + invoice generation flow locally before release
 - [ ] Add DEEPSEEK_API_KEY or OPENAI_API_KEY to AI module for live code generation
-- [ ] Create `.env.production` with real production credentials
-- [ ] First `/release` deploy to production server
-- [ ] Configure Nginx reverse proxy on production (when domain is ready)
-- [ ] Set up Let's Encrypt SSL (when domain is ready)
+- [ ] Configure nightly replication: `ijts_system` → `ijts_recovery_db`
+- [ ] Production Nginx config for serving uploads volume (`/uploads/` location block)

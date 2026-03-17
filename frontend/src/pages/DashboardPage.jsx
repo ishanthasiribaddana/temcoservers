@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Server, Code, LogOut, User, CreditCard, Activity, Terminal, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell } from 'lucide-react'
+import { Server, Code, LogOut, User, CreditCard, Activity, Terminal, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin } from 'lucide-react'
 import api from '../api/config'
 
 function DashboardPage() {
@@ -84,7 +84,7 @@ function DashboardPage() {
     <div className="min-h-screen bg-gray-100 text-gray-900">
       {/* Sidebar */}
       <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 p-6 flex flex-col shadow-sm z-10">
-        <div className="flex items-end gap-0.5 mb-8">
+        <div className="flex items-end gap-0.5 mb-8 cursor-pointer" onClick={() => window.open('/', '_blank')}>
           <img src="/images/temco-logo-sm.png" alt="Temco" className="h-8 w-auto" />
           <span className="text-lg font-semibold tracking-tight text-gray-800 leading-none" style={{ fontFamily: "'Inter', sans-serif" }}>Servers</span>
         </div>
@@ -104,6 +104,17 @@ function DashboardPage() {
               {item.label}
             </button>
           ))}
+          {(user.role === 'Super Admin' || user.role === 'System Admin') && (
+            <div className="pt-3 mt-2 border-t border-gray-200">
+              <button
+                onClick={() => navigate('/admin')}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-accent-600 hover:bg-accent-50 hover:border-accent-200 transition font-medium"
+              >
+                <Shield className="w-4 h-4" />
+                Admin Panel
+              </button>
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-gray-200 pt-4 mt-4">
@@ -116,6 +127,10 @@ function DashboardPage() {
               <div className="text-xs text-gray-400 truncate">{user.role}</div>
             </div>
           </div>
+          <button onClick={() => window.open('/', '_blank')} className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-500 hover:text-primary-500 hover:bg-primary-50 rounded-lg transition">
+            <ExternalLink className="w-4 h-4" />
+            Back to Website
+          </button>
           <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
@@ -147,6 +162,7 @@ function DashboardPage() {
           </button>
         </div>
 
+        {activeTab === 'overview' && <>
         {/* Stats Cards */}
         <div className="grid md:grid-cols-4 gap-4 mb-8">
           {[
@@ -170,7 +186,43 @@ function DashboardPage() {
           ))}
         </div>
 
-        {/* Server Instances */}
+        {/* Overview: compact server status list (no actions) */}
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="h-1.5 bg-gradient-to-r from-primary-500 via-accent-500 to-temco-500" />
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">Server Status</h2>
+              <button onClick={() => setActiveTab('servers')} className="text-xs text-primary-500 hover:text-primary-600 font-medium">View All &rarr;</button>
+            </div>
+            {loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {servers.map((srv) => (
+                  <div key={srv.instanceId} className={`flex items-center justify-between p-3 rounded-lg border ${statusBg(srv.status)}`}>
+                    <div className="flex items-center gap-3">
+                      <Server className="w-4 h-4 text-primary-500" />
+                      <span className="text-sm font-medium text-gray-900">{srv.displayName || srv.name}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      {srv.ipv4 && <span>{srv.ipv4}</span>}
+                      <span className={`flex items-center gap-1 font-medium ${statusColor(srv.status)}`}>
+                        <Circle className="w-2 h-2 fill-current" />
+                        {srv.status}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        </>}
+
+        {/* My Servers: full server list with actions */}
+        {activeTab === 'servers' && (
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <div className="h-1.5 bg-gradient-to-r from-primary-500 via-accent-500 to-temco-500" />
           <div className="p-6">
@@ -266,6 +318,68 @@ function DashboardPage() {
             )}
           </div>
         </div>
+        )}
+
+        {/* Profile Tab */}
+        {activeTab === 'profile' && (
+          <div className="max-w-2xl">
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="h-1.5 bg-gradient-to-r from-primary-500 via-accent-500 to-temco-500" />
+              <div className="p-8">
+                <div className="flex items-center gap-5 mb-8">
+                  <div className="w-16 h-16 bg-gradient-to-br from-primary-400 to-accent-500 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+                    {(user.firstName?.[0] || user.username?.[0] || 'U').toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{user.firstName} {user.lastName}</h2>
+                    <span className="inline-block mt-1 px-3 py-0.5 text-xs font-medium bg-primary-50 text-primary-700 border border-primary-200 rounded-full">{user.role}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <div>
+                      <div className="text-[10px] text-gray-400 uppercase font-semibold">Username</div>
+                      <div className="text-sm text-gray-900 font-medium">{user.username}</div>
+                    </div>
+                  </div>
+                  {user.email && (
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Mail className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <div className="text-[10px] text-gray-400 uppercase font-semibold">Email</div>
+                        <div className="text-sm text-gray-900 font-medium">{user.email}</div>
+                      </div>
+                    </div>
+                  )}
+                  {user.mobile && (
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                      <Phone className="w-4 h-4 text-gray-400" />
+                      <div>
+                        <div className="text-[10px] text-gray-400 uppercase font-semibold">Mobile</div>
+                        <div className="text-sm text-gray-900 font-medium">{user.mobile}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-gray-200 text-xs text-gray-400">
+                  GUP ID: {user.gupId} &middot; Login ID: {user.loginId}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Terminal Tab */}
+        {activeTab === 'terminal' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-8 text-center">
+            <Terminal className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Web Terminal</h3>
+            <p className="text-sm text-gray-500">Coming soon — SSH access to your servers directly from the browser.</p>
+          </div>
+        )}
       </main>
     </div>
   )
