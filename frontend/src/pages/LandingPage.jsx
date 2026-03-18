@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Server, Code, Zap, Shield, ChevronRight, Monitor, Cpu, Globe, Building2, Landmark, Check, Workflow } from 'lucide-react'
+import { Server, Code, Zap, Shield, ChevronRight, Monitor, Cpu, Globe, Building2, Landmark, Check, Workflow, User, LogOut } from 'lucide-react'
 
 function LandingPage() {
   const [lkrRate, setLkrRate] = useState(null)
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      try { setUser(JSON.parse(userData)) } catch (e) { /* ignore */ }
+    }
+  }, [])
 
   useEffect(() => {
     fetch('https://open.er-api.com/v6/latest/USD')
@@ -97,12 +105,26 @@ function LandingPage() {
             <a href="#partners" className="hover:text-primary-500 transition">Partners</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/login" className="px-4 py-2 text-sm text-gray-600 hover:text-primary-500 transition">
-              Log In
-            </Link>
-            <Link to="/login" className="px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition">
-              Get Started
-            </Link>
+            {user ? (
+              <>
+                <Link
+                  to={user.role === 'Super Admin' || user.role === 'System Admin' ? '/admin' : '/dashboard'}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition"
+                >
+                  <User className="w-4 h-4" />
+                  {user.firstName || user.username}
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="px-4 py-2 text-sm text-gray-600 hover:text-primary-500 transition">
+                  Log In
+                </Link>
+                <Link to="/login" className="px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition">
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>

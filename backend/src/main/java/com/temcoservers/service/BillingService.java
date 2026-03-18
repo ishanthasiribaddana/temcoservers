@@ -126,7 +126,9 @@ public class BillingService {
      */
     public Map<String, Object> uploadSlip(int gupId, int loginId, String purchaserName,
                                            String referenceNo, double amount, String product,
-                                           String slipUrl, String originalFilename, int fileSize) {
+                                           String slipUrl, String originalFilename, int fileSize,
+                                           Double planPriceUsd, Double exchangeRate,
+                                           Double expectedAmountLkr, Double differenceAmountLkr) {
 
         // Map product slug to sub_chart_of_account is_sca IDs (from V2 migration seed)
         int revenueScaId;
@@ -207,14 +209,59 @@ public class BillingService {
         // 4. Create ts_voucher_item_slip (link slip to debit voucher_item)
         em.createNativeQuery(
                 "INSERT INTO ts_voucher_item_slip (voucher_item_vi_id, slip_url, original_filename, " +
-                "file_size, uploaded_by_login_id, verification_status, created_at) " +
-                "VALUES (:viId, :slipUrl, :filename, :fileSize, :loginId, 'pending', NOW())")
+                "file_size, uploaded_by_login_id, verification_status, created_at, " +
+                "plan_price_usd, exchange_rate, expected_amount_lkr, paid_amount_lkr, difference_amount_lkr) " +
+                "VALUES (:viId, :slipUrl, :filename, :fileSize, :loginId, 'pending', NOW(), " +
+                ":planPriceUsd, :exchangeRate, :expectedAmountLkr, :paidAmountLkr, :differenceAmountLkr)")
                 .setParameter("viId", debitViId)
                 .setParameter("slipUrl", slipUrl)
                 .setParameter("filename", originalFilename)
                 .setParameter("fileSize", fileSize)
                 .setParameter("loginId", loginId)
+                .setParameter("planPriceUsd", planPriceUsd)
+                .setParameter("exchangeRate", exchangeRate)
+                .setParameter("expectedAmountLkr", expectedAmountLkr)
+                .setParameter("paidAmountLkr", amount)
+                .setParameter("differenceAmountLkr", differenceAmountLkr)
                 .executeUpdate();
+
+        // 5. If there is a payment difference, create additional journal entries
+        if (differenceAmountLkr != null && differenceAmountLkr != 0) {
+            double absDiff = Math.abs(differenceAmountLkr);
+            if (differenceAmountLkr > 0) {
+                // OVERPAYMENT: Debit Bank (already done above for full amount)
+                // Credit Customer Advance (liability) for the excess
+                String advanceItemId = voucherId + "-ADV";
+                em.createNativeQuery(
+                        "INSERT INTO voucher_item (id, description, date, is_active, amount, " +
+                        "vouchervid, voucher_typevt_id, user_loginlogin_id, login_sessionsession_id, " +
+                        "sub_chart_of_accountis_sca, qty, unit_price, to_be_paid_amount, created_at) " +
+                        "VALUES (:itemId, :desc, CURDATE(), 1, :amount, :vid, 1, :loginId, 1, " +
+                        "7, 1, :amount, :amount, NOW())")
+                        .setParameter("itemId", advanceItemId)
+                        .setParameter("desc", "Customer Advance (Overpayment LKR " + String.format("%.0f", absDiff) + ")")
+                        .setParameter("amount", absDiff)
+                        .setParameter("vid", vid)
+                        .setParameter("loginId", loginId)
+                        .executeUpdate();
+            } else {
+                // UNDERPAYMENT: Credit Revenue already done for full expected amount
+                // Debit Accounts Receivable for the shortfall
+                String arItemId = voucherId + "-AR";
+                em.createNativeQuery(
+                        "INSERT INTO voucher_item (id, description, date, is_active, amount, " +
+                        "vouchervid, voucher_typevt_id, user_loginlogin_id, login_sessionsession_id, " +
+                        "sub_chart_of_accountis_sca, qty, unit_price, to_be_paid_amount, created_at) " +
+                        "VALUES (:itemId, :desc, CURDATE(), 1, :amount, :vid, 1, :loginId, 1, " +
+                        "8, 1, :amount, :amount, NOW())")
+                        .setParameter("itemId", arItemId)
+                        .setParameter("desc", "Accounts Receivable (Underpayment LKR " + String.format("%.0f", absDiff) + ")")
+                        .setParameter("amount", absDiff)
+                        .setParameter("vid", vid)
+                        .setParameter("loginId", loginId)
+                        .executeUpdate();
+            }
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "Payment slip uploaded successfully");
@@ -223,6 +270,10 @@ public class BillingService {
         result.put("amount", amount);
         result.put("product", planLabel);
         result.put("status", "pending");
+        if (differenceAmountLkr != null && differenceAmountLkr != 0) {
+            result.put("differenceAmountLkr", differenceAmountLkr);
+            result.put("differenceType", differenceAmountLkr > 0 ? "overpayment" : "underpayment");
+        }
         return result;
     }
 
@@ -237,7 +288,9 @@ public class BillingService {
                 "v.general_user_profilegup_id, v.user_loginlogin_id, " +
                 "gup.first_name, gup.last_name, " +
                 "slip.slip_url, slip.original_filename, slip.verification_status, slip.id AS slip_id, " +
-                "vi.bank_reference_no " +
+                "vi.bank_reference_no, " +
+                "slip.plan_price_usd, slip.exchange_rate, slip.expected_amount_lkr, " +
+                "slip.paid_amount_lkr, slip.difference_amount_lkr " +
                 "FROM voucher v " +
                 "JOIN general_user_profile gup ON v.general_user_profilegup_id = gup.gup_id " +
                 "LEFT JOIN voucher_item vi ON vi.vouchervid = v.vid AND vi.id LIKE '%-DR' " +
@@ -262,6 +315,11 @@ public class BillingService {
             p.put("slipStatus", row[12]);
             p.put("slipId", row[13]);
             p.put("bankReference", row[14]);
+            p.put("planPriceUsd", row[15]);
+            p.put("exchangeRate", row[16]);
+            p.put("expectedAmountLkr", row[17]);
+            p.put("paidAmountLkr", row[18]);
+            p.put("differenceAmountLkr", row[19]);
             payments.add(p);
         }
         return payments;

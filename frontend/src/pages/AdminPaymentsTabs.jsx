@@ -131,7 +131,7 @@ export function PaymentsTab() {
 
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
-                        <span className="text-gray-400">Amount</span>
+                        <span className="text-gray-400">Amount Paid</span>
                         <div className="font-bold text-gray-900 text-sm">LKR {p.amount?.toLocaleString()}</div>
                       </div>
                       <div>
@@ -147,6 +147,40 @@ export function PaymentsTab() {
                         <div className="font-mono font-medium text-gray-500 text-[10px]">{p.voucherId}</div>
                       </div>
                     </div>
+
+                    {/* Exchange rate & difference info */}
+                    {p.planPriceUsd && (
+                      <div className="mt-3 p-2.5 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+                          <div>
+                            <span className="text-gray-400">Plan Price</span>
+                            <div className="font-medium text-gray-700">${p.planPriceUsd}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Rate</span>
+                            <div className="font-medium text-gray-700">LKR {p.exchangeRate}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Expected</span>
+                            <div className="font-medium text-gray-700">LKR {p.expectedAmountLkr?.toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Paid</span>
+                            <div className="font-medium text-gray-700">LKR {p.paidAmountLkr?.toLocaleString()}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Difference</span>
+                            {p.differenceAmountLkr === 0 || !p.differenceAmountLkr ? (
+                              <div className="font-medium text-green-600 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Exact</div>
+                            ) : p.differenceAmountLkr > 0 ? (
+                              <div className="font-medium text-blue-600">+LKR {p.differenceAmountLkr?.toLocaleString()} <span className="text-blue-400">(credit)</span></div>
+                            ) : (
+                              <div className="font-medium text-red-600">-LKR {Math.abs(p.differenceAmountLkr)?.toLocaleString()} <span className="text-red-400">(owing)</span></div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Slip preview */}

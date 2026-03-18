@@ -270,6 +270,10 @@ public class BillingResource {
             @FormParam("amount") String amountStr,
             @FormParam("product") String product,
             @FormParam("slip") InputStream slipInputStream,
+            @FormParam("planPriceUsd") String planPriceUsdStr,
+            @FormParam("exchangeRate") String exchangeRateStr,
+            @FormParam("expectedAmountLkr") String expectedAmountLkrStr,
+            @FormParam("differenceAmountLkr") String differenceAmountLkrStr,
             @HeaderParam("Content-Disposition") String contentDisposition) {
 
         Map<String, Object> user = getUser(authHeader);
@@ -329,10 +333,17 @@ public class BillingResource {
             // Relative URL for serving via Nginx
             String slipUrl = "/uploads/slips/" + savedFilename;
 
+            // Parse optional exchange rate fields
+            Double planPriceUsd = planPriceUsdStr != null ? Double.valueOf(planPriceUsdStr) : null;
+            Double exchangeRate = exchangeRateStr != null ? Double.valueOf(exchangeRateStr) : null;
+            Double expectedAmountLkr = expectedAmountLkrStr != null ? Double.valueOf(expectedAmountLkrStr) : null;
+            Double differenceAmountLkr = differenceAmountLkrStr != null ? Double.valueOf(differenceAmountLkrStr) : null;
+
             // Call BillingService to create voucher + voucher_item + slip record
             Map<String, Object> result = billingService.uploadSlip(
                     gupId, loginId, purchaserName, referenceNo, amount, product,
-                    slipUrl, savedFilename, fileSize);
+                    slipUrl, savedFilename, fileSize,
+                    planPriceUsd, exchangeRate, expectedAmountLkr, differenceAmountLkr);
 
             // Generate invoice PDF
             String invoiceUrl = null;

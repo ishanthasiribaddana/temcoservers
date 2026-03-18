@@ -1,12 +1,22 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft, Zap, Mail, MessageSquare, FileText, BarChart3, Globe, Database,
   Bot, Brain, Sparkles, CheckCircle2, ArrowRight, Workflow, Shield, Clock,
   Users, Code, Layers, Search, Bell, CalendarDays, ShoppingCart, Share2,
-  ChevronRight, Play, Star
+  ChevronRight, Play, Star, User
 } from 'lucide-react'
 
 function WorkflowsBlogPage() {
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      try { setUser(JSON.parse(userData)) } catch (e) { /* ignore */ }
+    }
+  }, [])
+
   const integrations = [
     { name: 'Gmail', category: 'Email', icon: Mail },
     { name: 'Slack', category: 'Messaging', icon: MessageSquare },
@@ -125,14 +135,27 @@ function WorkflowsBlogPage() {
             <span className="text-xl font-semibold tracking-tight text-gray-800 leading-none" style={{ fontFamily: "'Inter', sans-serif" }}>Servers</span>
           </Link>
           <div className="hidden md:flex items-center gap-8 text-sm text-gray-600">
+            <Link to="/" className="hover:text-primary-500 transition">Home</Link>
             <a href="#capabilities" className="hover:text-primary-500 transition">What It Can Do</a>
             <a href="#use-cases" className="hover:text-primary-500 transition">Use Cases</a>
             <a href="#integrations" className="hover:text-primary-500 transition">Integrations</a>
             <a href="#pricing" className="hover:text-primary-500 transition">Add to Plan</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/login" className="px-4 py-2 text-sm text-gray-600 hover:text-primary-500 transition">Log In</Link>
-            <Link to="/billing" className="px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition">Get Started</Link>
+            {user ? (
+              <Link
+                to={user.role === 'Super Admin' || user.role === 'System Admin' ? '/admin' : '/dashboard'}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition"
+              >
+                <User className="w-4 h-4" />
+                {user.firstName || user.username}
+              </Link>
+            ) : (
+              <>
+                <Link to="/login" className="px-4 py-2 text-sm text-gray-600 hover:text-primary-500 transition">Log In</Link>
+                <Link to="/billing" className="px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition">Get Started</Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -146,7 +169,7 @@ function WorkflowsBlogPage() {
           </div>
           <h1 className="text-5xl md:text-6xl font-bold leading-tight mb-6 text-gray-900">
             Automate Everything with
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-500 via-temco-500 to-primary-600"> AI Workflow </span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-500 via-temco-500 to-primary-600"> AI 5.5 Gen Workflow </span>
             Automation
           </h1>
           <p className="text-lg text-gray-500 max-w-2xl mx-auto mb-4">
@@ -464,7 +487,7 @@ function WorkflowsBlogPage() {
       <section className="py-20 px-6 bg-gradient-to-r from-accent-500 via-temco-500 to-primary-600">
         <div className="max-w-3xl mx-auto text-center text-white">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">Stop Doing It Manually</h2>
-          <p className="text-accent-100 text-lg mb-8 max-w-xl mx-auto">
+          <p className="text-gray-200 text-lg mb-8 max-w-xl mx-auto">
             Every hour you spend on repetitive tasks is an hour you're not building your business.
             Let AI workflows do the busywork.
           </p>

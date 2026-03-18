@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2026-03-18
+
+### Added
+- **Exchange Rate Tracking** — Bank transfer payments now track USD→LKR conversion
+  - Plan dropdown auto-calculates expected LKR amount (plan USD × market rate + 2%)
+  - Amount field pre-filled and editable; shows +/- difference indicator
+  - Double-entry accounting: Overpayment → Customer Advance (liability), Underpayment → Accounts Receivable (asset)
+  - Admin payment review shows exchange rate breakdown and difference
+- **Navbar User Name** — Logged-in users see their name + dashboard link instead of "Log In" on LandingPage and WorkflowsBlogPage
+- **Home Navigation** — WorkflowsBlogPage navbar now includes "Home" link back to landing page
+
+### Changed
+- **WorkflowsBlogPage** — Heading updated to "AI 5.5 Gen Workflow Automation"
+- **WorkflowsBlogPage** — CTA section text color fixed (accent-100 → gray-200 for readability)
+- **PaymentPage** — Plan selector moved before Amount field (drives LKR calculation)
+- **release.md** — Updated admin credentials: admin user deactivated, ishantha is Super Admin
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/rest/BillingResource.java` — Exchange rate form params
+- `backend/src/main/java/com/temcoservers/service/BillingService.java` — Exchange rate storage + double-entry difference journals
+- `backend/src/main/resources/db/migration/V6__payment_exchange_rate_tracking.sql` — New columns + sub-accounts
+- `frontend/src/pages/PaymentPage.jsx` — Swap fields, auto-calc LKR, difference indicator
+- `frontend/src/pages/LandingPage.jsx` — Logged-in user name in navbar
+- `frontend/src/pages/WorkflowsBlogPage.jsx` — Home link, user name, heading, CTA color fix
+- `frontend/src/pages/AdminPaymentsTabs.jsx` — Exchange rate breakdown in payment review
+- `frontend/src/version.js` — Bumped to v1.4.1
+
+---
+
 ## [1.4.0] - 2026-03-18
 
 ### Added

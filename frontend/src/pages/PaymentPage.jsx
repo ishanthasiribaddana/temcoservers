@@ -38,10 +38,10 @@ const bankAccounts = [
 ]
 
 const plans = [
-  { value: 'starter', label: 'Starter — $4/month' },
-  { value: 'ai-basic', label: 'AI Basic — $8/month' },
-  { value: 'ai-pro', label: 'AI Pro — $15/month' },
-  { value: 'ai-unlimited', label: 'AI Unlimited — $25/month' },
+  { value: 'starter', label: 'Starter — $4/month', usd: 4 },
+  { value: 'ai-basic', label: 'AI Basic — $8/month', usd: 8 },
+  { value: 'ai-pro', label: 'AI Pro — $15/month', usd: 15 },
+  { value: 'ai-unlimited', label: 'AI Unlimited — $25/month', usd: 25 },
 ]
 
 function PaymentPage() {
@@ -62,6 +62,7 @@ function PaymentPage() {
   const [paypalConfigured, setPaypalConfigured] = useState(false)
   const [paypalResult, setPaypalResult] = useState(null)
   const [selectedPlanId, setSelectedPlanId] = useState(preselectedPlanId ? parseInt(preselectedPlanId) : 0)
+  const [lkrRate, setLkrRate] = useState(null)
   const paypalContainerRef = useRef(null)
 
   const [form, setForm] = useState({
@@ -81,6 +82,16 @@ function PaymentPage() {
       ...prev,
       purchaserName: `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim(),
     }))
+
+    // Fetch LKR exchange rate
+    fetch('https://open.er-api.com/v6/latest/USD')
+      .then(res => res.json())
+      .then(data => {
+        if (data.result === 'success' && data.rates?.LKR) {
+          setLkrRate(Math.round(data.rates.LKR * 1.02)) // ~2% markup for bank selling rate
+        }
+      })
+      .catch(() => {})
 
     // Check if PayPal is configured
     api.get('/billing/paypal/client-id').then(res => {
@@ -183,6 +194,15 @@ function PaymentPage() {
       formData.append('product', form.product)
       formData.append('timestamp', new Date().toISOString())
       formData.append('slip', form.file)
+      // Send exchange rate and expected amount for accounting
+      const selectedPlan = plans.find(p => p.value === form.product)
+      if (selectedPlan && lkrRate) {
+        const expectedLkr = Math.round(selectedPlan.usd * lkrRate)
+        formData.append('expectedAmountLkr', String(expectedLkr))
+        formData.append('planPriceUsd', String(selectedPlan.usd))
+        formData.append('exchangeRate', String(lkrRate))
+        formData.append('differenceAmountLkr', String(parseFloat(form.amount || 0) - expectedLkr))
+      }
 
       const res = await api.post('/billing/upload-slip', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -439,6 +459,37 @@ function PaymentPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid md:grid-cols-2 gap-5">
+              {/* Plan (first — drives amount calculation) */}
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
+                  <Package className="w-4 h-4 text-gray-400" /> Plan
+                </label>
+                <select
+                  value={form.product}
+                  onChange={(e) => {
+                    const selected = plans.find(p => p.value === e.target.value)
+                    const expectedLkr = selected && lkrRate ? Math.round(selected.usd * lkrRate) : ''
+                    setForm(prev => ({ ...prev, product: e.target.value, amount: expectedLkr ? String(expectedLkr) : prev.amount }))
+                  }}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                  required
+                >
+                  <option value="">Select a plan</option>
+                  {plans.map((p) => (
+                    <option key={p.value} value={p.value}>{p.label}{lkrRate ? ` ≈ LKR ${(p.usd * lkrRate).toLocaleString()}` : ''}</option>
+                  ))}
+                </select>
+                {form.product && lkrRate && (() => {
+                  const selected = plans.find(p => p.value === form.product)
+                  return selected ? (
+                    <div className="mt-1.5 text-xs text-gray-500">
+                      ${selected.usd} × LKR {lkrRate} = <span className="font-semibold text-gray-700">LKR {(selected.usd * lkrRate).toLocaleString()}</span>
+                      <span className="text-gray-400 ml-1">(market rate + ~2%)</span>
+                    </div>
+                  ) : null
+                })()}
+              </div>
+
               {/* Purchaser Name */}
               <div>
                 <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
@@ -454,6 +505,45 @@ function PaymentPage() {
                 />
               </div>
 
+              {/* Amount (LKR) — pre-filled from plan, editable */}
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
+                  <DollarSign className="w-4 h-4 text-gray-400" /> Amount Paid (LKR)
+                </label>
+                <input
+                  type="number"
+                  value={form.amount}
+                  onChange={(e) => setForm(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder={form.product && lkrRate ? `Expected: LKR ${Math.round(plans.find(p => p.value === form.product)?.usd * lkrRate || 0)}` : 'Select a plan first'}
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  required
+                  min="1"
+                />
+                {/* Overpayment / Underpayment indicator */}
+                {form.product && form.amount && lkrRate && (() => {
+                  const selected = plans.find(p => p.value === form.product)
+                  if (!selected) return null
+                  const expected = Math.round(selected.usd * lkrRate)
+                  const paid = parseFloat(form.amount) || 0
+                  const diff = paid - expected
+                  if (diff === 0) return (
+                    <div className="mt-1.5 flex items-center gap-1 text-xs text-green-600">
+                      <CheckCircle className="w-3.5 h-3.5" /> Exact match
+                    </div>
+                  )
+                  if (diff > 0) return (
+                    <div className="mt-1.5 flex items-center gap-1 text-xs text-blue-600">
+                      <AlertCircle className="w-3.5 h-3.5" /> +LKR {diff.toLocaleString()} overpayment — credit applied to next billing
+                    </div>
+                  )
+                  return (
+                    <div className="mt-1.5 flex items-center gap-1 text-xs text-red-600">
+                      <AlertCircle className="w-3.5 h-3.5" /> -LKR {Math.abs(diff).toLocaleString()} underpayment — balance due on next billing
+                    </div>
+                  )
+                })()}
+              </div>
+
               {/* Reference Number */}
               <div>
                 <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
@@ -467,40 +557,6 @@ function PaymentPage() {
                   className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   required
                 />
-              </div>
-
-              {/* Amount */}
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
-                  <DollarSign className="w-4 h-4 text-gray-400" /> Amount (LKR)
-                </label>
-                <input
-                  type="number"
-                  value={form.amount}
-                  onChange={(e) => setForm(prev => ({ ...prev, amount: e.target.value }))}
-                  placeholder="e.g. 2500"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  required
-                  min="1"
-                />
-              </div>
-
-              {/* Product */}
-              <div>
-                <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
-                  <Package className="w-4 h-4 text-gray-400" /> Plan
-                </label>
-                <select
-                  value={form.product}
-                  onChange={(e) => setForm(prev => ({ ...prev, product: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
-                  required
-                >
-                  <option value="">Select a plan</option>
-                  {plans.map((p) => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
