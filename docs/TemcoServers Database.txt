@@ -1,0 +1,163 @@
+﻿Payment Data Insert Model
+Tables with Data
+Table
+	Records
+	Purpose
+	voucher
+	6,328,447
+	Invoices (header) — linked to user, voucher_type, branch
+	voucher_item
+	234,105
+	Line items (receipts) — linked to voucher, sub_chart_of_account
+	voucher_type
+	3
+	SSP (Server Subscription Payment), SSR (Refund), ACP (AI Credit Purchase)
+	Tables Empty (Need Seeding for TemcoServers)
+Table
+	Purpose
+	account_type
+	Top-level categories: Assets, Liabilities, Equity, Revenue, Expenses
+	main_chart_of_account
+	Main accounts grouped by account_type
+	chart_of_account
+	Individual accounts under main accounts
+	sub_chart_of_account
+	Sub-accounts with unary self-relationship (sub_chart_of_account_is_sca → parent)
+	scoa_type
+	Sub-chart type classification
+	payment_mode
+	Cash, Bank Transfer, etc.
+	Chart of Accounts Hierarchy (Unary Relationship)
+account_type (Assets, Liabilities, Equity, Revenue, Expenses)
+ └── main_chart_of_account (e.g., Current Assets, Revenue)
+      └── chart_of_account (e.g., Bank - NTB, Subscription Revenue)
+           └── sub_chart_of_account (self-referencing tree)
+                └── sub_chart_of_account (deeper levels)
+My Suggested Chart of Accounts Structure for TemcoServers
+account_type
+a_id
+	type_name
+	code
+	1
+	Assets
+	A
+	2
+	Liabilities
+	L
+	3
+	Equity
+	E
+	4
+	Revenue
+	R
+	5
+	Expenses
+	X
+	main_chart_of_account
+id
+	name
+	account_type_a_id
+	1
+	Current Assets
+	1 (Assets)
+	2
+	Revenue
+	4 (Revenue)
+	3
+	Operating Expenses
+	5 (Expenses)
+	chart_of_account
+coa_id
+	account_name
+	code
+	account_type_a_id
+	main_chart_of_account_id
+	1
+	Bank - Nations Trust (Nawala)
+	A-1001
+	1
+	1
+	2
+	Bank - Sampath (Gangodawila)
+	A-1002
+	1
+	1
+	3
+	Bank - Commercial (Reid Ave)
+	A-1003
+	1
+	1
+	4
+	Server Subscription Revenue
+	R-4001
+	4
+	2
+	5
+	AI Credit Revenue
+	R-4002
+	4
+	2
+	6
+	Server Hosting Cost (Contabo)
+	X-5001
+	5
+	3
+	sub_chart_of_account (multi-level via unary relationship)
+is_sca
+	sub_account_name
+	code
+	chart_of_account_coa_id
+	sub_chart_of_account_is_sca (parent)
+	1
+	Starter Plan Revenue
+	R-4001-01
+	4
+	NULL
+	2
+	AI Basic Plan Revenue
+	R-4001-02
+	4
+	NULL
+	3
+	AI Pro Plan Revenue
+	R-4001-03
+	4
+	NULL
+	4
+	AI Unlimited Plan Revenue
+	R-4001-04
+	4
+	NULL
+	Data Flow When a Bank Slip is Uploaded
+1. Student uploads slip
+2. Create VOUCHER (invoice header)
+  → vid, id=auto (e.g., "SSP000001"), date, voucher_total,
+    general_user_profilegup_id, voucher_typevt_id=1 (SSP),
+    user_loginlogin_id, is_completed=0 (pending verification)
+ 
+3. Create VOUCHER_ITEM (receipt line — DEBIT bank)
+  → description="Bank Transfer", amount,
+    sub_chart_of_accountis_sca → Bank sub-account,
+    bank_reference_no=student's reference,
+    vouchervid → parent voucher
+ 
+4. Create VOUCHER_ITEM (receipt line — CREDIT revenue)
+  → description="Starter Plan Subscription", amount,
+    sub_chart_of_accountis_sca → Plan Revenue sub-account,
+    vouchervid → parent voucher
+ 
+5. Admin verifies slip → set voucher.is_completed=1
+For the bank slip file URL
+The voucher_item table already has bank_reference_no. I suggest adding a column slip_url VARCHAR(500) to voucher_item to store the uploaded file path. Alternatively, we can store it on the voucher table if you prefer one slip per invoice.
+________________
+
+
+Summary of Tables I Plan to Insert Data Into
+1. account_type — seed 5 types (Assets, Liabilities, Equity, Revenue, Expenses)
+2. main_chart_of_account — seed main groups
+3. chart_of_account — seed bank accounts + revenue/expense accounts
+4. sub_chart_of_account — seed plan-level sub-accounts (unary tree)
+5. payment_mode — seed "Bank Transfer"
+6. voucher — new row per payment (invoice header)
+7. voucher_item — 2 rows per payment (debit bank, credit revenue) + slip_url
+Question: Should I add slip_url column to voucher_item, or would you prefer it on the voucher (invoice header) table? And does this Chart of Accounts structure align with how you want to generate financial statements later?

@@ -2,7 +2,9 @@ package com.temcoservers.rest;
 
 import com.temcoservers.service.AdminService;
 import com.temcoservers.service.AuthService;
+import com.temcoservers.service.BillingService;
 import com.temcoservers.service.ContaboService;
+import com.temcoservers.service.NotificationService;
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -24,10 +26,17 @@ public class AdminResource {
     @EJB
     private ContaboService contaboService;
 
+    @EJB
+    private BillingService billingService;
+
+    @EJB
+    private NotificationService notificationService;
+
     private static final String SUPER_ADMIN = "Super Admin";
     private static final String SYSTEM_ADMIN = "System Admin";
+    private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(AdminResource.class.getName());
 
-    private String validateAdmin(String authHeader) {
+    private Map<String, Object> validateAdminUser(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return null;
         }
@@ -35,10 +44,15 @@ public class AdminResource {
             Map<String, Object> user = authService.getUserFromToken(authHeader.substring(7));
             String role = (String) user.get("role");
             if (SUPER_ADMIN.equals(role) || SYSTEM_ADMIN.equals(role)) {
-                return role;
+                return user;
             }
         } catch (Exception ignored) {}
         return null;
+    }
+
+    private String validateAdmin(String authHeader) {
+        Map<String, Object> user = validateAdminUser(authHeader);
+        return user != null ? (String) user.get("role") : null;
     }
 
     @GET
@@ -383,5 +397,160 @@ public class AdminResource {
         } catch (Exception e) {
             return Response.status(500).entity(Map.of("error", e.getMessage())).build();
         }
+    }
+
+    // =========================================================================
+    // Payments & Subscriptions
+    // =========================================================================
+
+    @GET
+    @Path("/payments/pending")
+    public Response listPendingPayments(@HeaderParam("Authorization") String authHeader) {
+        if (validateAdmin(authHeader) == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            return Response.ok(billingService.listPendingPayments()).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @POST
+    @Path("/payments/{voucherVid}/approve")
+    public Response approvePayment(
+            @HeaderParam("Authorization") String authHeader,
+            @PathParam("voucherVid") int voucherVid,
+            Map<String, Object> body) {
+        Map<String, Object> adminUser = validateAdminUser(authHeader);
+        if (adminUser == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            int adminLoginId = (int) adminUser.get("loginId");
+            int adminGupId = (int) adminUser.get("gupId");
+            String notes = body != null ? (String) body.get("notes") : null;
+            boolean provisionServer = body != null && Boolean.TRUE.equals(body.get("provisionServer"));
+
+            // 1. Approve the payment (activates subscription)
+            Map<String, Object> result = billingService.approvePayment(voucherVid, adminLoginId, notes);
+            int gupId = (int) result.get("gupId");
+
+            // 2. Optionally provision a Contabo server
+            if (provisionServer) {
+                try {
+                    // Get the user's subscription to find the plan's Contabo product ID
+                    Map<String, Object> sub = billingService.getUserSubscription(gupId);
+                    if (sub != null) {
+                        int planId = ((Number) sub.get("planId")).intValue();
+                        var plans = billingService.getPlans();
+                        Map<String, Object> plan = plans.stream()
+                                .filter(p -> ((Number) p.get("planId")).intValue() == planId)
+                                .findFirst().orElse(null);
+
+                        if (plan != null && plan.get("contaboProductId") != null) {
+                            String productId = (String) plan.get("contaboProductId");
+                            String displayName = "ts-" + gupId + "-" + System.currentTimeMillis() % 10000;
+
+                            // Ubuntu 22.04 image ID
+                            String imageId = "afecbb85-e2fc-46f0-9684-b46b1faf00bb";
+                            Map<String, Object> instance = contaboService.createInstance(
+                                    productId, "EU", imageId, displayName, 1);
+
+                            // Store in ts_server_instance
+                            long contaboId = instance.get("instanceId") != null
+                                    ? ((Number) instance.get("instanceId")).longValue() : 0;
+                            String ip = (String) instance.get("ipv4");
+
+                            em_insertServerInstance(gupId, planId, contaboId, ip, displayName);
+
+                            result.put("serverProvisioned", true);
+                            result.put("contaboInstanceId", contaboId);
+                            result.put("serverIp", ip);
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.warning("Server provisioning failed (non-fatal): " + e.getMessage());
+                    result.put("serverProvisioned", false);
+                    result.put("provisionError", e.getMessage());
+                }
+            }
+
+            // 3. Send notification to customer
+            try {
+                notificationService.notifyPaymentApproved(adminGupId, gupId);
+            } catch (Exception ignored) {}
+
+            return Response.ok(result).build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(400).entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @POST
+    @Path("/payments/{voucherVid}/reject")
+    public Response rejectPayment(
+            @HeaderParam("Authorization") String authHeader,
+            @PathParam("voucherVid") int voucherVid,
+            Map<String, Object> body) {
+        Map<String, Object> adminUser = validateAdminUser(authHeader);
+        if (adminUser == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            int adminLoginId = (int) adminUser.get("loginId");
+            int adminGupId = (int) adminUser.get("gupId");
+            String reason = body != null ? (String) body.get("reason") : "Payment rejected by admin";
+
+            Map<String, Object> result = billingService.rejectPayment(voucherVid, adminLoginId, reason);
+            int gupId = (int) result.get("gupId");
+
+            // Send notification
+            try {
+                notificationService.notifyPaymentRejected(adminGupId, gupId, reason);
+            } catch (Exception ignored) {}
+
+            return Response.ok(result).build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(400).entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @GET
+    @Path("/subscriptions")
+    public Response listSubscriptions(@HeaderParam("Authorization") String authHeader) {
+        if (validateAdmin(authHeader) == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            return Response.ok(billingService.listAllSubscriptions()).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    // Helper: insert into ts_server_instance and link to subscription
+    private void em_insertServerInstance(int gupId, int planId, long contaboId, String ip, String displayName) {
+        jakarta.persistence.EntityManager em = adminService.getEntityManager();
+        em.createNativeQuery(
+                "INSERT INTO ts_server_instance (contabo_instance_id, general_user_profile_gup_id, " +
+                "subscription_plan_id, ip_address, region, status, display_name, default_user) " +
+                "VALUES (:cid, :gupId, :planId, :ip, 'EU', 'provisioning', :name, 'root')")
+                .setParameter("cid", contaboId)
+                .setParameter("gupId", gupId)
+                .setParameter("planId", planId)
+                .setParameter("ip", ip)
+                .setParameter("name", displayName)
+                .executeUpdate();
+
+        // Get the instance_id we just inserted
+        Object idObj = em.createNativeQuery(
+                "SELECT instance_id FROM ts_server_instance WHERE contabo_instance_id = :cid")
+                .setParameter("cid", contaboId)
+                .getSingleResult();
+        int instanceId = ((Number) idObj).intValue();
+
+        // Link to subscription
+        billingService.linkServerToSubscription(gupId, instanceId);
     }
 }

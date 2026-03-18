@@ -34,7 +34,15 @@ public class ContaboService {
         apiPassword = System.getenv("CONTABO_API_PASSWORD");
     }
 
+    public boolean isConfigured() {
+        return clientId != null && !clientId.isBlank()
+                && clientSecret != null && !clientSecret.isBlank()
+                && apiUser != null && !apiUser.isBlank()
+                && apiPassword != null && !apiPassword.isBlank();
+    }
+
     public List<Map<String, Object>> listInstances() throws Exception {
+        if (!isConfigured()) return new ArrayList<>();
         String token = getAccessToken();
         String requestId = UUID.randomUUID().toString();
 

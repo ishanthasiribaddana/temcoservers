@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Server, Code, Zap, Shield, ChevronRight, Monitor, Cpu, Globe, Building2, Landmark, Check } from 'lucide-react'
+import { Server, Code, Zap, Shield, ChevronRight, Monitor, Cpu, Globe, Building2, Landmark, Check, Workflow } from 'lucide-react'
 
 function LandingPage() {
   const [lkrRate, setLkrRate] = useState(null)
@@ -93,6 +93,7 @@ function LandingPage() {
             <a href="#features" className="hover:text-primary-500 transition">Features</a>
             <a href="#pricing" className="hover:text-primary-500 transition">Pricing</a>
             <a href="#ai" className="hover:text-primary-500 transition">AI Tools</a>
+            <Link to="/workflows" className="hover:text-accent-500 transition font-medium">Workflows</Link>
             <a href="#partners" className="hover:text-primary-500 transition">Partners</a>
           </div>
           <div className="flex items-center gap-3">
@@ -161,18 +162,25 @@ function LandingPage() {
               { icon: Shield, title: 'Isolated Environment', desc: 'Your own VPS. Full root access. Break things without worry.', gradient: 'from-accent-400 to-primary-500', iconBg: 'bg-primary-500', hoverBorder: 'hover:border-primary-300' },
               { icon: Globe, title: 'Global Data Centers', desc: 'Servers in EU, US, Asia — choose the region closest to you.', gradient: 'from-primary-400 to-temco-500', iconBg: 'bg-temco-500', hoverBorder: 'hover:border-temco-300' },
               { icon: Zap, title: 'Instant Provisioning', desc: 'Server ready in under 2 minutes. Start coding immediately.', gradient: 'from-temco-400 to-accent-500', iconBg: 'bg-accent-500', hoverBorder: 'hover:border-accent-300' },
-            ].map((feature, i) => (
-              <div key={i} className={`rounded-xl overflow-hidden border border-gray-200 ${feature.hoverBorder} hover:shadow-lg transition group shadow-sm bg-white`}>
-                <div className={`h-1.5 bg-gradient-to-r ${feature.gradient}`} />
-                <div className="p-6">
-                  <div className={`w-11 h-11 ${feature.iconBg} rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                    <feature.icon className="w-5 h-5 text-white" />
+              { icon: Workflow, title: 'AI Workflow Automation', desc: 'Automate tasks across 400+ apps with a visual builder. Powered by n8n.', gradient: 'from-accent-500 to-temco-500', iconBg: 'bg-temco-500', hoverBorder: 'hover:border-temco-300', link: '/workflows' },
+            ].map((feature, i) => {
+              const card = (
+                <div key={i} className={`rounded-xl overflow-hidden border border-gray-200 ${feature.hoverBorder} hover:shadow-lg transition group shadow-sm bg-white ${feature.link ? 'cursor-pointer' : ''}`}>
+                  <div className={`h-1.5 bg-gradient-to-r ${feature.gradient}`} />
+                  <div className="p-6">
+                    <div className={`w-11 h-11 ${feature.iconBg} rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                      <feature.icon className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2 text-gray-900">{feature.title}</h3>
+                    <p className="text-sm text-gray-500">{feature.desc}</p>
+                    {feature.link && (
+                      <span className="inline-flex items-center gap-1 text-xs text-accent-600 font-semibold mt-3">Learn more <ChevronRight className="w-3 h-3" /></span>
+                    )}
                   </div>
-                  <h3 className="text-lg font-semibold mb-2 text-gray-900">{feature.title}</h3>
-                  <p className="text-sm text-gray-500">{feature.desc}</p>
                 </div>
-              </div>
-            ))}
+              )
+              return feature.link ? <Link key={i} to={feature.link}>{card}</Link> : card
+            })}
           </div>
         </div>
       </section>
@@ -373,6 +381,7 @@ function LandingPage() {
             <div className="flex items-center gap-6 text-sm text-gray-500">
               <a href="#features" className="hover:text-primary-500 transition">Features</a>
               <a href="#pricing" className="hover:text-primary-500 transition">Pricing</a>
+              <Link to="/workflows" className="hover:text-accent-500 transition">Workflows</Link>
               <a href="#partners" className="hover:text-primary-500 transition">Partners</a>
               <Link to="/login" className="hover:text-primary-500 transition">Log In</Link>
             </div>

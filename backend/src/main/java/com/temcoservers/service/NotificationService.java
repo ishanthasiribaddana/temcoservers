@@ -62,6 +62,20 @@ public class NotificationService {
         sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_PAYMENT_REMINDER, content);
     }
 
+    public void notifyPaymentApproved(int adminGupId, int userGupId) {
+        String content = "Your payment has been verified and approved. Your TemcoServers subscription is now active. " +
+                "You can access your server from the dashboard. Thank you!";
+        sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_SERVER_PROVISIONED, content);
+    }
+
+    public void notifyPaymentRejected(int adminGupId, int userGupId, String reason) {
+        String content = String.format(
+                "Your payment could not be verified. Reason: %s. " +
+                "Please contact support or submit a new payment slip if you believe this is an error.",
+                reason);
+        sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_PAYMENT_REMINDER, content);
+    }
+
     public void notifyAiUsageAlert(int adminGupId, int userGupId, int usedRequests, int limit) {
         String content = String.format(
                 "You have used %d out of %d AI requests this month. " +

@@ -13,6 +13,10 @@ public class AdminService {
     @PersistenceContext(unitName = "temcoserversPU")
     private EntityManager em;
 
+    public EntityManager getEntityManager() {
+        return em;
+    }
+
     public Map<String, Object> getDashboardStats() {
         Map<String, Object> stats = new LinkedHashMap<>();
 

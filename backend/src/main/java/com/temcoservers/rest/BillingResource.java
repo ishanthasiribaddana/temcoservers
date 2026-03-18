@@ -4,6 +4,7 @@ import com.temcoservers.service.AuthService;
 import com.temcoservers.service.BillingService;
 import com.temcoservers.service.InvoicePdfGenerator;
 import com.temcoservers.service.NotificationService;
+import com.temcoservers.service.PayPalService;
 import jakarta.ejb.EJB;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -35,6 +36,9 @@ public class BillingResource {
 
     @EJB
     private AuthService authService;
+
+    @EJB
+    private PayPalService payPalService;
 
     private Map<String, Object> getUser(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
@@ -135,6 +139,124 @@ public class BillingResource {
             return Response.ok(billingService.getUserPaymentHistory(gupId)).build();
         } catch (Exception e) {
             return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    // =========================================================================
+    // PayPal Payments
+    // =========================================================================
+
+    @GET
+    @Path("/paypal/client-id")
+    public Response getPayPalClientId() {
+        try {
+            if (!payPalService.isConfigured()) {
+                return Response.ok(Map.of("configured", false)).build();
+            }
+            return Response.ok(Map.of("configured", true, "clientId", payPalService.getClientId())).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @POST
+    @Path("/paypal/create-order")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response createPayPalOrder(@HeaderParam("Authorization") String authHeader, Map<String, Object> body) {
+        Map<String, Object> user = getUser(authHeader);
+        if (user == null) return Response.status(401).entity(Map.of("error", "Unauthorized")).build();
+        try {
+            int planId = ((Number) body.get("planId")).intValue();
+            String returnUrl = (String) body.get("returnUrl");
+            String cancelUrl = (String) body.get("cancelUrl");
+
+            // Get plan details
+            var plans = billingService.getPlans();
+            Map<String, Object> plan = plans.stream()
+                    .filter(p -> ((Number) p.get("planId")).intValue() == planId)
+                    .findFirst().orElse(null);
+            if (plan == null) {
+                return Response.status(400).entity(Map.of("error", "Invalid plan ID")).build();
+            }
+
+            String planName = (String) plan.get("planName");
+            double price = ((Number) plan.get("priceMonthly")).doubleValue();
+
+            Map<String, Object> result = payPalService.createOrder(planName, price, returnUrl, cancelUrl);
+            result.put("planId", planId);
+            result.put("planName", planName);
+            result.put("amount", price);
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, "PayPal create order failed", e);
+            return Response.status(500).entity(Map.of("error", "PayPal order creation failed: " + e.getMessage())).build();
+        }
+    }
+
+    @POST
+    @Path("/paypal/capture")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response capturePayPalOrder(@HeaderParam("Authorization") String authHeader, Map<String, Object> body) {
+        Map<String, Object> user = getUser(authHeader);
+        if (user == null) return Response.status(401).entity(Map.of("error", "Unauthorized")).build();
+        try {
+            String orderId = (String) body.get("orderId");
+            int planId = ((Number) body.get("planId")).intValue();
+            int gupId = (int) user.get("gupId");
+            int loginId = (int) user.get("loginId");
+
+            // 1. Capture the PayPal payment
+            Map<String, Object> capture = payPalService.captureOrder(orderId);
+            String captureId = (String) capture.get("captureId");
+            String amountStr = (String) capture.get("amount");
+            double amount = Double.parseDouble(amountStr);
+            String payerEmail = (String) capture.get("payerEmail");
+
+            // 2. Subscribe user (creates pending_payment subscription)
+            Map<String, Object> subResult;
+            try {
+                subResult = billingService.subscribe(gupId, loginId, planId);
+            } catch (IllegalStateException e) {
+                // User may already have pending subscription from selecting plan
+                subResult = Map.of("planName", capture.getOrDefault("customId", "Plan"));
+            }
+
+            String planName = (String) subResult.getOrDefault("planName", "Plan");
+
+            // 3. Create voucher record (PayPal type=4, payment_mode=5, auto-completed)
+            billingService.createPayPalVoucher(gupId, loginId, amount, planName, captureId, payerEmail);
+
+            // 4. Auto-approve: activate subscription immediately
+            billingService.autoActivateSubscription(gupId);
+
+            // 5. Generate receipt PDF
+            String purchaserName = user.get("firstName") + " " + user.get("lastName");
+            String voucherId = "PSP-" + gupId + "-" + System.currentTimeMillis();
+            String receiptUrl = null;
+            try {
+                receiptUrl = invoicePdfGenerator.generatePayPalReceipt(
+                        voucherId, purchaserName, amount, "USD", planName,
+                        orderId, captureId, payerEmail);
+            } catch (Exception ignored) {}
+
+            // 6. Send notification
+            try {
+                notificationService.notifyPaymentApproved(gupId, gupId);
+            } catch (Exception ignored) {}
+
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            result.put("message", "Payment successful! Your subscription is now active.");
+            result.put("orderId", orderId);
+            result.put("captureId", captureId);
+            result.put("amount", amount);
+            result.put("payerEmail", payerEmail);
+            result.put("status", "active");
+            if (receiptUrl != null) result.put("receiptUrl", receiptUrl);
+            return Response.ok(result).build();
+
+        } catch (Exception e) {
+            LOG.log(Level.SEVERE, "PayPal capture failed", e);
+            return Response.status(500).entity(Map.of("error", "PayPal capture failed: " + e.getMessage())).build();
         }
     }
 

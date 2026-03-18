@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2026-03-18
+
+### Added
+- **PayPal Payment Integration** — Full PayPal REST API v2 support for instant payments
+  - PayPalService: OAuth token, create order, capture payment
+  - Three new endpoints: GET client-id, POST create-order, POST capture
+  - PayPal receipt PDF generation with "PAID" watermark
+  - Auto-activation of subscription on successful capture
+  - PayPal voucher creation (type=4/PSP, payment_mode=5)
+- **Admin Payment Review** — Admin panel for managing bank slip payments
+  - List pending payments, approve/reject with notes
+  - Server provisioning on approval
+  - Payment notification emails (approved/rejected)
+- **Workflow Automation Blog Page** — Marketing page for n8n add-on feature
+  - 9 use cases, AI capabilities, 400+ integrations grid
+  - Competitor comparison (vs Zapier, Make, Genspark)
+  - Add-on pricing: AI Pro +$5/mo, AI Unlimited +$8/mo
+  - Linked from LandingPage navbar, features grid, and footer
+- **AdminPaymentsTabs** — PaymentsTab and SubscriptionsTab components for admin UI
+- **Flyway Migration V4** — Admin payment review (voucher_vid, admin columns on subscription)
+- **Flyway Migration V5** — PayPal support (voucher type PSP, payment mode PayPal, PayPal Revenue sub-account)
+
+### Changed
+- **PaymentPage** — Added PayPal payment method toggle, SDK loading, PayPal buttons, receipt download
+- **BillingPage** — Handle pending_payment status with amber banner and payment link
+- **BillingService** — subscribe() now sets status=pending_payment; filter payment history to TemcoServers vouchers only (SSP/PSP/SSR/ACP)
+- **ContaboService** — Return empty list when credentials missing (graceful local dev handling)
+- **LandingPage** — Added "Workflows" nav link, "AI Workflow Automation" feature card, footer link
+- **docker-compose.yml** — Added PayPal environment variables (PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, PAYPAL_MODE)
+- **release.md** — Updated Cloudflare SSL from Flexible to Full with Origin Certificate
+
+### Infrastructure
+- **SSL Upgrade** — Installed Cloudflare Origin Certificate on production Nginx (port 443)
+- **Cloudflare SSL** — Switched from Flexible to Full mode (end-to-end encryption)
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/service/PayPalService.java` — New PayPal API service
+- `backend/src/main/java/com/temcoservers/rest/BillingResource.java` — PayPal endpoints + receipt generation
+- `backend/src/main/java/com/temcoservers/service/BillingService.java` — PayPal voucher, auto-activate, payment history filter
+- `backend/src/main/java/com/temcoservers/service/InvoicePdfGenerator.java` — PayPal receipt PDF
+- `backend/src/main/java/com/temcoservers/rest/AdminResource.java` — Admin payment review endpoints
+- `backend/src/main/java/com/temcoservers/service/AdminService.java` — Exposed EntityManager
+- `backend/src/main/java/com/temcoservers/service/NotificationService.java` — Payment notifications
+- `backend/src/main/java/com/temcoservers/service/ContaboService.java` — Graceful credential check
+- `backend/src/main/resources/db/migration/V4__admin_payment_review.sql` — New migration
+- `backend/src/main/resources/db/migration/V5__paypal_payment_support.sql` — New migration
+- `frontend/src/App.jsx` — Added /workflows route
+- `frontend/src/pages/PaymentPage.jsx` — PayPal integration + receipt download
+- `frontend/src/pages/AdminPage.jsx` — Payments and Subscriptions tabs
+- `frontend/src/pages/AdminPaymentsTabs.jsx` — New admin payment components
+- `frontend/src/pages/BillingPage.jsx` — Pending payment status handling
+- `frontend/src/pages/LandingPage.jsx` — Workflows nav link and feature card
+- `frontend/src/pages/WorkflowsBlogPage.jsx` — New workflow automation blog page
+- `docker-compose.yml` — PayPal env vars
+- `frontend/src/version.js` — Bumped to v1.4.0
+
+---
+
 ## [1.3.0] - 2026-03-17
 
 ### Added

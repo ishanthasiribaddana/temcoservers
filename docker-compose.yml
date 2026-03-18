@@ -29,6 +29,9 @@ services:
       CONTABO_API_USER: ${CONTABO_API_USER}
       CONTABO_API_PASSWORD: ${CONTABO_API_PASSWORD}
       AI_MODULE_URL: http://temcoservers-ai-module:8000
+      PAYPAL_CLIENT_ID: ${PAYPAL_CLIENT_ID}
+      PAYPAL_CLIENT_SECRET: ${PAYPAL_CLIENT_SECRET}
+      PAYPAL_MODE: ${PAYPAL_MODE:-sandbox}
     volumes:
       - uploads-data:/opt/temcoservers/uploads
     ports:
@@ -68,7 +71,7 @@ services:
     container_name: temcoservers-frontend
     restart: unless-stopped
     environment:
-      VITE_API_URL: http://localhost:8180/api
+      VITE_API_URL: http://localhost:8180/temcoservers/api
       VITE_AI_URL: http://localhost:8580
     ports:
       - "127.0.0.1:3010:5173"

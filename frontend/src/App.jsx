@@ -7,6 +7,7 @@ import AdminPage from './pages/AdminPage'
 import BillingPage from './pages/BillingPage'
 import NotificationsPage from './pages/NotificationsPage'
 import PaymentPage from './pages/PaymentPage'
+import WorkflowsBlogPage from './pages/WorkflowsBlogPage'
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
       <Route path="/billing" element={<BillingPage />} />
       <Route path="/notifications" element={<NotificationsPage />} />
       <Route path="/payment" element={<PaymentPage />} />
+      <Route path="/workflows" element={<WorkflowsBlogPage />} />
     </Routes>
   )
 }

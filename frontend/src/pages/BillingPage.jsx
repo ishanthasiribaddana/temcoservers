@@ -241,7 +241,7 @@ function BillingPage() {
                           >
                             {actionLoading === plan.planId ? (
                               <Loader2 className="w-4 h-4 animate-spin mx-auto" />
-                            ) : hasActive ? 'Cancel current first' : 'Subscribe'}
+                            ) : hasActive ? 'Cancel current first' : 'Select Plan'}
                           </button>
                         )}
                       </div>
@@ -256,18 +256,47 @@ function BillingPage() {
               <div className="max-w-2xl">
                 {subscription ? (
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                    <div className="h-2 bg-gradient-to-r from-green-400 to-green-600" />
+                    <div className={`h-2 bg-gradient-to-r ${
+                      subscription.status === 'pending_payment' ? 'from-amber-400 to-amber-500' : 'from-green-400 to-green-600'
+                    }`} />
                     <div className="p-8">
+                      {subscription.status === 'pending_payment' && (
+                        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                          <div className="flex items-center gap-2 text-amber-700 font-medium text-sm mb-1">
+                            <Activity className="w-4 h-4" /> Payment Pending
+                          </div>
+                          <p className="text-xs text-amber-600 mb-3">
+                            Your subscription is created but awaiting payment. Please upload your bank slip to activate your plan.
+                          </p>
+                          <button
+                            onClick={() => navigate('/payment')}
+                            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition"
+                          >
+                            Upload Bank Slip
+                          </button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-                            <CreditCard className="w-6 h-6 text-green-500" />
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                            subscription.status === 'pending_payment' ? 'bg-amber-50' : 'bg-green-50'
+                          }`}>
+                            <CreditCard className={`w-6 h-6 ${
+                              subscription.status === 'pending_payment' ? 'text-amber-500' : 'text-green-500'
+                            }`} />
                           </div>
                           <div>
                             <h3 className="text-xl font-bold text-gray-900">{subscription.planName}</h3>
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
-                              <Check className="w-3 h-3" /> Active
-                            </span>
+                            {subscription.status === 'active' ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                                <Check className="w-3 h-3" /> Active
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                                <Activity className="w-3 h-3" /> Pending Payment
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="text-right">

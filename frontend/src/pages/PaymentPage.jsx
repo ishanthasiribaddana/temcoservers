@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Landmark, Upload, CheckCircle, ArrowLeft, Copy, FileText,
-  User, Hash, Calendar, DollarSign, Package, AlertCircle, Loader2
+  User, Hash, Calendar, DollarSign, Package, AlertCircle, Loader2,
+  CreditCard, Globe
 } from 'lucide-react'
 import api from '../api/config'
 
@@ -47,6 +48,7 @@ function PaymentPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const preselectedPlan = searchParams.get('plan') || ''
+  const preselectedPlanId = searchParams.get('planId') || ''
 
   const [user, setUser] = useState(null)
   const [copied, setCopied] = useState(null)
@@ -54,6 +56,13 @@ function PaymentPage() {
   const [submitted, setSubmitted] = useState(false)
   const [invoiceUrl, setInvoiceUrl] = useState(null)
   const [error, setError] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('bank') // 'bank' or 'paypal'
+  const [paypalReady, setPaypalReady] = useState(false)
+  const [paypalClientId, setPaypalClientId] = useState(null)
+  const [paypalConfigured, setPaypalConfigured] = useState(false)
+  const [paypalResult, setPaypalResult] = useState(null)
+  const [selectedPlanId, setSelectedPlanId] = useState(preselectedPlanId ? parseInt(preselectedPlanId) : 0)
+  const paypalContainerRef = useRef(null)
 
   const [form, setForm] = useState({
     purchaserName: '',
@@ -72,7 +81,73 @@ function PaymentPage() {
       ...prev,
       purchaserName: `${parsed.firstName || ''} ${parsed.lastName || ''}`.trim(),
     }))
+
+    // Check if PayPal is configured
+    api.get('/billing/paypal/client-id').then(res => {
+      if (res.data?.configured) {
+        setPaypalConfigured(true)
+        setPaypalClientId(res.data.clientId)
+      }
+    }).catch(() => {})
   }, [navigate])
+
+  // Load PayPal SDK when method switches to paypal
+  const loadPayPalSdk = useCallback(() => {
+    if (!paypalClientId || document.getElementById('paypal-sdk')) {
+      if (window.paypal) setPaypalReady(true)
+      return
+    }
+    const script = document.createElement('script')
+    script.id = 'paypal-sdk'
+    script.src = `https://www.paypal.com/sdk/js?client-id=${paypalClientId}&currency=USD`
+    script.onload = () => setPaypalReady(true)
+    document.body.appendChild(script)
+  }, [paypalClientId])
+
+  useEffect(() => {
+    if (paymentMethod === 'paypal' && paypalClientId) {
+      loadPayPalSdk()
+    }
+  }, [paymentMethod, paypalClientId, loadPayPalSdk])
+
+  // Render PayPal buttons when SDK is ready
+  useEffect(() => {
+    if (!paypalReady || paymentMethod !== 'paypal' || !paypalContainerRef.current || !selectedPlanId) return
+    // Clear previous buttons
+    paypalContainerRef.current.innerHTML = ''
+    window.paypal.Buttons({
+      style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'pay' },
+      createOrder: async () => {
+        setError('')
+        const res = await api.post('/billing/paypal/create-order', {
+          planId: selectedPlanId,
+          returnUrl: window.location.origin + '/payment?status=success',
+          cancelUrl: window.location.origin + '/payment?status=cancel',
+        })
+        return res.data.orderId
+      },
+      onApprove: async (data) => {
+        setSubmitting(true)
+        setError('')
+        try {
+          const res = await api.post('/billing/paypal/capture', {
+            orderId: data.orderID,
+            planId: selectedPlanId,
+          })
+          setPaypalResult(res.data)
+          setSubmitted(true)
+        } catch (err) {
+          setError(err.response?.data?.error || 'PayPal payment failed')
+        } finally {
+          setSubmitting(false)
+        }
+      },
+      onError: (err) => {
+        setError('PayPal payment failed. Please try again.')
+        console.error('PayPal error', err)
+      },
+    }).render(paypalContainerRef.current)
+  }, [paypalReady, paymentMethod, selectedPlanId])
 
   const handleCopy = (text, index) => {
     navigator.clipboard.writeText(text)
@@ -124,24 +199,52 @@ function PaymentPage() {
   if (!user) return null
 
   if (submitted) {
+    const isPayPal = !!paypalResult
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-lg p-10 max-w-md w-full text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 ${
+            isPayPal ? 'bg-green-100' : 'bg-green-100'
+          }`}>
             <CheckCircle className="w-8 h-8 text-green-600" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Payment Slip Submitted</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {isPayPal ? 'Payment Successful!' : 'Payment Slip Submitted'}
+          </h2>
           <p className="text-gray-500 mb-6">
-            Your bank slip has been received. Our team will verify the payment and activate your plan within 24 hours.
+            {isPayPal
+              ? 'Your PayPal payment has been confirmed and your subscription is now active!'
+              : 'Your bank slip has been received. Our team will verify the payment and activate your plan within 24 hours.'}
           </p>
-          <p className="text-xs text-gray-400 mb-4">
-            Reference: <span className="font-mono font-medium text-gray-600">{form.referenceNo}</span>
-          </p>
-          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-6">
-            Verification is pending and may take up to 24 hours as we reconcile with bank statements.
-          </p>
+          {isPayPal ? (
+            <div className="text-xs text-gray-500 space-y-1 mb-6">
+              <div>PayPal Order: <span className="font-mono font-medium text-gray-700">{paypalResult.orderId}</span></div>
+              <div>Amount: <span className="font-medium text-gray-700">${paypalResult.amount}</span></div>
+              {paypalResult.payerEmail && <div>Payer: <span className="font-medium text-gray-700">{paypalResult.payerEmail}</span></div>}
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-gray-400 mb-4">
+                Reference: <span className="font-mono font-medium text-gray-600">{form.referenceNo}</span>
+              </p>
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 mb-6">
+                Verification is pending and may take up to 24 hours as we reconcile with bank statements.
+              </p>
+            </>
+          )}
           <div className="flex flex-col gap-3">
-            {invoiceUrl && (
+            {isPayPal && paypalResult.receiptUrl && (
+              <a
+                href={paypalResult.receiptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-200 rounded-lg font-semibold transition"
+              >
+                <FileText className="w-4 h-4" />
+                Download Receipt
+              </a>
+            )}
+            {!isPayPal && invoiceUrl && (
               <a
                 href={invoiceUrl}
                 target="_blank"
@@ -178,7 +281,101 @@ function PaymentPage() {
       </div>
 
       <div className="max-w-4xl mx-auto px-6 py-8">
+        {/* Payment Method Toggle */}
+        {paypalConfigured && (
+          <div className="mb-8">
+            <h2 className="text-lg font-bold text-gray-900 mb-3">Choose Payment Method</h2>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPaymentMethod('bank')}
+                className={`flex-1 flex items-center gap-3 p-4 rounded-xl border-2 transition ${
+                  paymentMethod === 'bank'
+                    ? 'border-primary-500 bg-primary-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <Landmark className={`w-6 h-6 ${paymentMethod === 'bank' ? 'text-primary-500' : 'text-gray-400'}`} />
+                <div className="text-left">
+                  <div className={`text-sm font-bold ${paymentMethod === 'bank' ? 'text-primary-700' : 'text-gray-700'}`}>Bank Transfer</div>
+                  <div className="text-xs text-gray-500">Transfer to our bank account & upload slip</div>
+                </div>
+              </button>
+              <button
+                onClick={() => setPaymentMethod('paypal')}
+                className={`flex-1 flex items-center gap-3 p-4 rounded-xl border-2 transition ${
+                  paymentMethod === 'paypal'
+                    ? 'border-[#0070ba] bg-blue-50'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <Globe className={`w-6 h-6 ${paymentMethod === 'paypal' ? 'text-[#0070ba]' : 'text-gray-400'}`} />
+                <div className="text-left">
+                  <div className={`text-sm font-bold ${paymentMethod === 'paypal' ? 'text-[#0070ba]' : 'text-gray-700'}`}>PayPal</div>
+                  <div className="text-xs text-gray-500">Pay instantly with PayPal (USD)</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* PayPal Section */}
+        {paymentMethod === 'paypal' && paypalConfigured && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8 mb-10">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Globe className="w-5 h-5 text-[#0070ba]" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Pay with PayPal</h2>
+                <p className="text-xs text-gray-500">Instant payment — your subscription activates immediately</p>
+              </div>
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-6 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {error}
+              </div>
+            )}
+
+            {/* Plan Selection for PayPal */}
+            <div className="mb-6">
+              <label className="flex items-center gap-1.5 text-sm font-medium text-gray-700 mb-1.5">
+                <Package className="w-4 h-4 text-gray-400" /> Select Plan
+              </label>
+              <select
+                value={selectedPlanId}
+                onChange={(e) => setSelectedPlanId(parseInt(e.target.value))}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#0070ba] focus:border-transparent bg-white"
+                required
+              >
+                <option value="0">Choose a plan</option>
+                {plans.map((p, i) => (
+                  <option key={i} value={i + 1}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {selectedPlanId > 0 ? (
+              <div>
+                {submitting && (
+                  <div className="flex items-center justify-center gap-2 py-6 text-gray-500">
+                    <Loader2 className="w-5 h-5 animate-spin" /> Processing PayPal payment...
+                  </div>
+                )}
+                <div ref={paypalContainerRef} className={submitting ? 'opacity-30 pointer-events-none' : ''} />
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-400 text-sm">
+                Please select a plan above to continue with PayPal
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Bank Transfer Details */}
+        {paymentMethod === 'bank' && (
+        <>
         <div className="mb-10">
           <h2 className="text-xl font-bold text-gray-900 mb-1">Bank Transfer Details</h2>
           <p className="text-sm text-gray-500 mb-6">
@@ -227,7 +424,6 @@ function PaymentPage() {
           </div>
         </div>
 
-        {/* Upload Slip Form */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 md:p-8">
           <h2 className="text-xl font-bold text-gray-900 mb-1">Upload Bank Slip</h2>
           <p className="text-sm text-gray-500 mb-6">
@@ -373,6 +569,8 @@ function PaymentPage() {
             </button>
           </form>
         </div>
+        </>
+        )}
       </div>
     </div>
   )

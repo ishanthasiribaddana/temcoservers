@@ -8,6 +8,7 @@ import {
 import api from '../api/config'
 import { APP_VERSION } from '../version'
 import { UsersTab, RolesTab, ModulesPagesTab } from './AdminRbacTabs'
+import { PaymentsTab, SubscriptionsTab } from './AdminPaymentsTabs'
 
 function AdminPage() {
   const navigate = useNavigate()
@@ -97,7 +98,9 @@ function AdminPage() {
     { icon: Users, label: 'Customers', tab: 'customers' },
     { icon: Server, label: 'Servers', tab: 'servers' },
     { icon: CreditCard, label: 'Revenue', tab: 'revenue' },
-    { icon: Users, label: 'User Mgmt', tab: 'rbac-users', section: true },
+    { icon: DollarSign, label: 'Payments', tab: 'payments', section: true, sectionLabel: 'Billing' },
+    { icon: CreditCard, label: 'Subscriptions', tab: 'subscriptions' },
+    { icon: Users, label: 'User Mgmt', tab: 'rbac-users', section: true, sectionLabel: 'Access Control' },
     { icon: Shield, label: 'Roles & Perms', tab: 'rbac-roles' },
     { icon: Activity, label: 'Modules & Pages', tab: 'rbac-modules' },
   ]
@@ -128,7 +131,7 @@ function AdminPage() {
             <div key={i}>
               {item.section && (
                 <div className="pt-3 pb-1 mt-2 border-t border-gray-200">
-                  <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Access Control</span>
+                  <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{item.sectionLabel || 'Section'}</span>
                 </div>
               )}
               <button
@@ -250,10 +253,6 @@ function AdminPage() {
                         <div className="flex justify-between py-2 border-b border-gray-100">
                           <span className="text-gray-500">Subscription Plans</span>
                           <span className="font-medium text-gray-900">{stats.activePlans}</span>
-                        </div>
-                        <div className="flex justify-between py-2">
-                          <span className="text-gray-500">Server Provider</span>
-                          <span className="font-medium text-primary-600">Contabo</span>
                         </div>
                       </div>
                     </div>
@@ -448,6 +447,12 @@ function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* Payments Tab */}
+        {activeTab === 'payments' && <PaymentsTab />}
+
+        {/* Subscriptions Tab */}
+        {activeTab === 'subscriptions' && <SubscriptionsTab />}
 
         {/* RBAC — Users Tab */}
         {activeTab === 'rbac-users' && (

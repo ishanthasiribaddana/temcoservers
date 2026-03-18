@@ -43,7 +43,7 @@ public class BillingService {
                 "s.end_date, s.status, sp.plan_name, sp.price_monthly, sp.ai_requests_limit " +
                 "FROM ts_subscription s " +
                 "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
-                "WHERE s.general_user_profile_gup_id = :gupId AND s.status = 'active' " +
+                "WHERE s.general_user_profile_gup_id = :gupId AND s.status IN ('active','pending_payment') " +
                 "ORDER BY s.start_date DESC");
         q.setParameter("gupId", gupId);
         q.setMaxResults(1);
@@ -64,10 +64,16 @@ public class BillingService {
     }
 
     public Map<String, Object> subscribe(int gupId, int loginId, int planId) {
-        // Check if user already has active subscription
+        // Check if user already has active or pending subscription
         Map<String, Object> existing = getUserSubscription(gupId);
         if (existing != null) {
-            throw new IllegalStateException("User already has an active subscription. Cancel first.");
+            String existingStatus = (String) existing.get("status");
+            if ("active".equals(existingStatus)) {
+                throw new IllegalStateException("User already has an active subscription. Cancel first.");
+            }
+            if ("pending_payment".equals(existingStatus)) {
+                throw new IllegalStateException("User already has a pending subscription. Please upload your bank slip.");
+            }
         }
 
         // Verify plan exists
@@ -81,32 +87,19 @@ public class BillingService {
         Object[] planRow = planRows.get(0);
         double price = ((Number) planRow[2]).doubleValue();
 
-        // Create subscription
+        // Create subscription with pending_payment status (activated after admin approves slip)
         em.createNativeQuery(
                 "INSERT INTO ts_subscription (general_user_profile_gup_id, plan_id, start_date, status) " +
-                "VALUES (:gupId, :planId, CURDATE(), 'active')")
+                "VALUES (:gupId, :planId, CURDATE(), 'pending_payment')")
                 .setParameter("gupId", gupId)
                 .setParameter("planId", planId)
                 .executeUpdate();
 
-        // Create voucher record for the payment
-        em.createNativeQuery(
-                "INSERT INTO voucher (id, description, date, voucher_total, " +
-                "general_user_profilegup_id, voucher_typevt_id, login_sessionsession_id, " +
-                "user_loginlogin_id, branch_bid, is_active, payment_date, total_paid, is_completed, time) " +
-                "VALUES (:vid, :desc, CURDATE(), :total, :gupId, 1, 1, :loginId, 1, 1, CURDATE(), :total, 1, CURTIME())")
-                .setParameter("vid", "SSP-" + gupId + "-" + System.currentTimeMillis())
-                .setParameter("desc", "Server Subscription Payment - " + planRow[1])
-                .setParameter("total", price)
-                .setParameter("gupId", gupId)
-                .setParameter("loginId", loginId)
-                .executeUpdate();
-
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("message", "Subscription created successfully");
+        result.put("message", "Subscription created. Please upload your bank slip to activate.");
         result.put("planName", planRow[1]);
         result.put("priceMonthly", price);
-        result.put("status", "active");
+        result.put("status", "pending_payment");
         return result;
     }
 
@@ -233,6 +226,310 @@ public class BillingService {
         return result;
     }
 
+    // =========================================================================
+    // Admin Payment Review
+    // =========================================================================
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listPendingPayments() {
+        Query q = em.createNativeQuery(
+                "SELECT v.vid, v.id, v.description, v.date, v.voucher_total, v.payment_date, " +
+                "v.general_user_profilegup_id, v.user_loginlogin_id, " +
+                "gup.first_name, gup.last_name, " +
+                "slip.slip_url, slip.original_filename, slip.verification_status, slip.id AS slip_id, " +
+                "vi.bank_reference_no " +
+                "FROM voucher v " +
+                "JOIN general_user_profile gup ON v.general_user_profilegup_id = gup.gup_id " +
+                "LEFT JOIN voucher_item vi ON vi.vouchervid = v.vid AND vi.id LIKE '%-DR' " +
+                "LEFT JOIN ts_voucher_item_slip slip ON slip.voucher_item_vi_id = vi.vi_id " +
+                "WHERE v.is_completed = 0 AND v.voucher_typevt_id = 1 AND v.is_active = 1 " +
+                "ORDER BY v.date DESC");
+        List<Object[]> rows = q.getResultList();
+        List<Map<String, Object>> payments = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("voucherVid", row[0]);
+            p.put("voucherId", row[1]);
+            p.put("description", row[2]);
+            p.put("date", row[3] != null ? row[3].toString() : null);
+            p.put("amount", row[4]);
+            p.put("paymentDate", row[5] != null ? row[5].toString() : null);
+            p.put("gupId", row[6]);
+            p.put("loginId", row[7]);
+            p.put("customerName", (row[8] != null ? row[8] : "") + " " + (row[9] != null ? row[9] : ""));
+            p.put("slipUrl", row[10]);
+            p.put("slipFilename", row[11]);
+            p.put("slipStatus", row[12]);
+            p.put("slipId", row[13]);
+            p.put("bankReference", row[14]);
+            payments.add(p);
+        }
+        return payments;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listAllSubscriptions() {
+        Query q = em.createNativeQuery(
+                "SELECT s.subscription_id, s.general_user_profile_gup_id, s.plan_id, " +
+                "s.server_instance_id, s.start_date, s.end_date, s.status, " +
+                "s.approved_by_login_id, s.approved_at, s.reject_reason, " +
+                "sp.plan_name, sp.price_monthly, " +
+                "gup.first_name, gup.last_name, " +
+                "si.ip_address, si.contabo_instance_id " +
+                "FROM ts_subscription s " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "JOIN general_user_profile gup ON s.general_user_profile_gup_id = gup.gup_id " +
+                "LEFT JOIN ts_server_instance si ON s.server_instance_id = si.instance_id " +
+                "ORDER BY s.created_at DESC");
+        List<Object[]> rows = q.getResultList();
+        List<Map<String, Object>> subs = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> s = new LinkedHashMap<>();
+            s.put("subscriptionId", row[0]);
+            s.put("gupId", row[1]);
+            s.put("planId", row[2]);
+            s.put("serverInstanceId", row[3]);
+            s.put("startDate", row[4] != null ? row[4].toString() : null);
+            s.put("endDate", row[5] != null ? row[5].toString() : null);
+            s.put("status", row[6]);
+            s.put("approvedByLoginId", row[7]);
+            s.put("approvedAt", row[8] != null ? row[8].toString() : null);
+            s.put("rejectReason", row[9]);
+            s.put("planName", row[10]);
+            s.put("priceMonthly", row[11]);
+            s.put("customerName", (row[12] != null ? row[12] : "") + " " + (row[13] != null ? row[13] : ""));
+            s.put("serverIp", row[14]);
+            s.put("contaboInstanceId", row[15]);
+            subs.add(s);
+        }
+        return subs;
+    }
+
+    /**
+     * Admin approves a payment:
+     * 1. Set voucher.is_completed = 1
+     * 2. Set ts_voucher_item_slip.verification_status = 'approved'
+     * 3. Activate the user's pending subscription
+     * 4. Link voucher to subscription
+     * Returns gupId so caller can provision server + send notification
+     */
+    public Map<String, Object> approvePayment(int voucherVid, int adminLoginId, String adminNotes) {
+        // Get voucher details
+        Query vq = em.createNativeQuery(
+                "SELECT v.vid, v.general_user_profilegup_id, v.voucher_total, v.description " +
+                "FROM voucher v WHERE v.vid = :vid AND v.is_completed = 0");
+        vq.setParameter("vid", voucherVid);
+        @SuppressWarnings("unchecked")
+        List<Object[]> vRows = vq.getResultList();
+        if (vRows.isEmpty()) {
+            throw new IllegalArgumentException("Voucher not found or already completed");
+        }
+        Object[] vRow = vRows.get(0);
+        int gupId = ((Number) vRow[1]).intValue();
+
+        // 1. Mark voucher as completed
+        em.createNativeQuery("UPDATE voucher SET is_completed = 1, updated_at = NOW() WHERE vid = :vid")
+                .setParameter("vid", voucherVid)
+                .executeUpdate();
+
+        // 2. Mark slip as approved
+        em.createNativeQuery(
+                "UPDATE ts_voucher_item_slip s " +
+                "JOIN voucher_item vi ON s.voucher_item_vi_id = vi.vi_id " +
+                "SET s.verification_status = 'approved', s.verified_by_login_id = :adminId, " +
+                "s.verified_at = NOW(), s.admin_notes = :notes " +
+                "WHERE vi.vouchervid = :vid")
+                .setParameter("adminId", adminLoginId)
+                .setParameter("notes", adminNotes)
+                .setParameter("vid", voucherVid)
+                .executeUpdate();
+
+        // 3. Activate the user's pending subscription and link voucher
+        em.createNativeQuery(
+                "UPDATE ts_subscription SET status = 'active', voucher_vid = :vid, " +
+                "approved_by_login_id = :adminId, approved_at = NOW(), updated_at = NOW() " +
+                "WHERE general_user_profile_gup_id = :gupId AND status = 'pending_payment'")
+                .setParameter("vid", voucherVid)
+                .setParameter("adminId", adminLoginId)
+                .setParameter("gupId", gupId)
+                .executeUpdate();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("message", "Payment approved and subscription activated");
+        result.put("gupId", gupId);
+        result.put("voucherVid", voucherVid);
+        return result;
+    }
+
+    /**
+     * Admin rejects a payment:
+     * 1. Set voucher.is_active = 0 (void it)
+     * 2. Set ts_voucher_item_slip.verification_status = 'rejected'
+     * 3. Cancel the user's pending subscription with reject reason
+     */
+    public Map<String, Object> rejectPayment(int voucherVid, int adminLoginId, String reason) {
+        Query vq = em.createNativeQuery(
+                "SELECT v.vid, v.general_user_profilegup_id FROM voucher v " +
+                "WHERE v.vid = :vid AND v.is_completed = 0");
+        vq.setParameter("vid", voucherVid);
+        @SuppressWarnings("unchecked")
+        List<Object[]> vRows = vq.getResultList();
+        if (vRows.isEmpty()) {
+            throw new IllegalArgumentException("Voucher not found or already completed");
+        }
+        int gupId = ((Number) vRows.get(0)[1]).intValue();
+
+        // 1. Void the voucher
+        em.createNativeQuery("UPDATE voucher SET is_active = 0, updated_at = NOW() WHERE vid = :vid")
+                .setParameter("vid", voucherVid)
+                .executeUpdate();
+
+        // 2. Mark slip as rejected
+        em.createNativeQuery(
+                "UPDATE ts_voucher_item_slip s " +
+                "JOIN voucher_item vi ON s.voucher_item_vi_id = vi.vi_id " +
+                "SET s.verification_status = 'rejected', s.verified_by_login_id = :adminId, " +
+                "s.verified_at = NOW(), s.admin_notes = :reason " +
+                "WHERE vi.vouchervid = :vid")
+                .setParameter("adminId", adminLoginId)
+                .setParameter("reason", reason)
+                .setParameter("vid", voucherVid)
+                .executeUpdate();
+
+        // 3. Reject the subscription
+        em.createNativeQuery(
+                "UPDATE ts_subscription SET status = 'rejected', reject_reason = :reason, " +
+                "approved_by_login_id = :adminId, approved_at = NOW(), end_date = CURDATE(), updated_at = NOW() " +
+                "WHERE general_user_profile_gup_id = :gupId AND status = 'pending_payment'")
+                .setParameter("reason", reason)
+                .setParameter("adminId", adminLoginId)
+                .setParameter("gupId", gupId)
+                .executeUpdate();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("message", "Payment rejected");
+        result.put("gupId", gupId);
+        return result;
+    }
+
+    /**
+     * Link a provisioned server instance to the user's active subscription.
+     */
+    public void linkServerToSubscription(int gupId, int serverInstanceId) {
+        em.createNativeQuery(
+                "UPDATE ts_subscription SET server_instance_id = :sid, updated_at = NOW() " +
+                "WHERE general_user_profile_gup_id = :gupId AND status = 'active' " +
+                "AND server_instance_id IS NULL")
+                .setParameter("sid", serverInstanceId)
+                .setParameter("gupId", gupId)
+                .executeUpdate();
+    }
+
+    // =========================================================================
+    // PayPal Payment Support
+    // =========================================================================
+
+    /**
+     * Create a completed voucher for a PayPal payment.
+     * PayPal payments are auto-verified so is_completed=1 immediately.
+     * voucher_typevt_id=4 (PSP), payment_mode=5 (PayPal).
+     */
+    public void createPayPalVoucher(int gupId, int loginId, double amount,
+                                     String planName, String captureId, String payerEmail) {
+        String voucherId = "PSP-" + gupId + "-" + System.currentTimeMillis();
+        String description = "PayPal Payment - " + planName + " (Capture: " + captureId + ")";
+
+        // Create voucher (auto-completed)
+        em.createNativeQuery(
+                "INSERT INTO voucher (id, description, date, voucher_total, " +
+                "general_user_profilegup_id, voucher_typevt_id, login_sessionsession_id, " +
+                "user_loginlogin_id, branch_bid, is_active, payment_date, total_paid, " +
+                "is_completed, payment_mode_payment_mode_id, time) " +
+                "VALUES (:vid, :desc, CURDATE(), :total, :gupId, 4, 1, :loginId, 1, 1, " +
+                "CURDATE(), :total, 1, 5, CURTIME())")
+                .setParameter("vid", voucherId)
+                .setParameter("desc", description)
+                .setParameter("total", amount)
+                .setParameter("gupId", gupId)
+                .setParameter("loginId", loginId)
+                .executeUpdate();
+
+        // Get the voucher vid
+        Object vidObj = em.createNativeQuery(
+                "SELECT vid FROM voucher WHERE id = :vid")
+                .setParameter("vid", voucherId)
+                .getSingleResult();
+        int vid = ((Number) vidObj).intValue();
+
+        // Create debit voucher_item (PayPal revenue sub-account is_sca=5)
+        em.createNativeQuery(
+                "INSERT INTO voucher_item (id, description, date, is_active, amount, vouchervid, " +
+                "voucher_typevt_id, login_sessionsession_id, sub_chart_of_accountis_sca, " +
+                "bank_reference_no, payment_mode_payment_mode_id) " +
+                "VALUES (:id, :desc, CURDATE(), 1, :amount, :vid, 4, 1, 5, :ref, 5)")
+                .setParameter("id", voucherId + "-DR")
+                .setParameter("desc", "PayPal Payment - " + payerEmail)
+                .setParameter("amount", amount)
+                .setParameter("vid", vid)
+                .setParameter("ref", captureId)
+                .executeUpdate();
+
+        // Create credit voucher_item (plan revenue sub-account)
+        int revenueScaId = getRevenueSubAccount(planName);
+        em.createNativeQuery(
+                "INSERT INTO voucher_item (id, description, date, is_active, amount, vouchervid, " +
+                "voucher_typevt_id, login_sessionsession_id, sub_chart_of_accountis_sca) " +
+                "VALUES (:id, :desc, CURDATE(), 1, :amount, :vid, 4, 1, :sca)")
+                .setParameter("id", voucherId + "-CR")
+                .setParameter("desc", planName + " Subscription Revenue")
+                .setParameter("amount", amount)
+                .setParameter("vid", vid)
+                .setParameter("sca", revenueScaId)
+                .executeUpdate();
+    }
+
+    /**
+     * Auto-activate a user's pending_payment subscription (used for PayPal instant payments).
+     * Also links the most recent voucher to the subscription.
+     */
+    public void autoActivateSubscription(int gupId) {
+        // Find the latest voucher for this user (the one just created)
+        Object vidObj = null;
+        try {
+            vidObj = em.createNativeQuery(
+                    "SELECT vid FROM voucher WHERE general_user_profilegup_id = :gupId " +
+                    "ORDER BY vid DESC LIMIT 1")
+                    .setParameter("gupId", gupId)
+                    .getSingleResult();
+        } catch (Exception ignored) {}
+
+        // Activate and link voucher
+        String sql = "UPDATE ts_subscription SET status = 'active', approved_at = NOW(), updated_at = NOW()";
+        if (vidObj != null) {
+            sql += ", voucher_vid = :vid";
+        }
+        sql += " WHERE general_user_profile_gup_id = :gupId AND status = 'pending_payment'";
+
+        var q = em.createNativeQuery(sql).setParameter("gupId", gupId);
+        if (vidObj != null) {
+            q.setParameter("vid", ((Number) vidObj).intValue());
+        }
+        q.executeUpdate();
+    }
+
+    /**
+     * Map plan name to revenue sub-account id (sub_chart_of_account.is_sca).
+     */
+    private int getRevenueSubAccount(String planName) {
+        if (planName == null) return 1;
+        String lower = planName.toLowerCase();
+        if (lower.contains("starter")) return 1;
+        if (lower.contains("basic")) return 2;
+        if (lower.contains("pro")) return 3;
+        if (lower.contains("unlimited")) return 4;
+        return 1; // default to Starter
+    }
+
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> getUserPaymentHistory(int gupId) {
         Query q = em.createNativeQuery(
@@ -241,6 +538,7 @@ public class BillingService {
                 "FROM voucher v " +
                 "JOIN voucher_type vt ON v.voucher_typevt_id = vt.vt_id " +
                 "WHERE v.general_user_profilegup_id = :gupId " +
+                "AND (v.id LIKE 'SSP-%' OR v.id LIKE 'PSP-%' OR v.id LIKE 'SSR-%' OR v.id LIKE 'ACP-%') " +
                 "ORDER BY v.date DESC");
         q.setParameter("gupId", gupId);
         q.setMaxResults(50);
