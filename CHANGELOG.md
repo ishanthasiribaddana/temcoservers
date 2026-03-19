@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.2] - 2026-03-19
+
+### Fixed
+- **CI/CD migration step** — `sudo mysql` fails on production because `deploy` user lacks passwordless sudo; changed to `docker exec -i temcoservers-mariadb mysql` instead
+- Re-included seed migration from v1.8.1 (which failed to run)
+
+### Files Changed
+- `.github/workflows/deploy.yml` — Fixed migration command to use docker exec
+- `scripts/migrations/v1.8.2_seed_test_server.sql` — Re-run seed migration
+- `frontend/src/version.js` — v1.8.2
+
+---
+
 ## [1.8.1] - 2026-03-19
 
 ### Fixed

@@ -106,7 +106,7 @@ jobs:
             echo "Found migration files: $MIGRATION_FILES"
             for file in $MIGRATION_FILES; do
               echo "Running migration: $file"
-              cat "$file" | $SSH_CMD "sudo mysql -u root -p'${{ secrets.DB_PASSWORD }}' ijts_recovery_db"
+              cat "$file" | $SSH_CMD "docker exec -i temcoservers-mariadb mysql -u root -p'${{ secrets.DB_PASSWORD }}'"
             done
             echo "All migrations completed"
           fi
