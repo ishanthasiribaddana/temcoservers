@@ -560,4 +560,25 @@ public class AdminService {
                     .setParameter("mid", modId).setParameter("lid", loginId).executeUpdate();
         }
     }
+
+    public int setServerCredentials(int instanceId, String password) {
+        return em.createNativeQuery(
+                "UPDATE ts_server_instance SET initial_password = :pwd, status = 'running' " +
+                "WHERE instance_id = :id")
+                .setParameter("pwd", password)
+                .setParameter("id", instanceId)
+                .executeUpdate();
+    }
+
+    @SuppressWarnings("unchecked")
+    public Object[] getServerInfo(int instanceId) {
+        List<Object[]> rows = em.createNativeQuery(
+                "SELECT si.general_user_profile_gup_id, si.ip_address, si.default_user, " +
+                "sp.plan_name FROM ts_server_instance si " +
+                "LEFT JOIN ts_subscription_plan sp ON si.subscription_plan_id = sp.plan_id " +
+                "WHERE si.instance_id = :id")
+                .setParameter("id", instanceId)
+                .getResultList();
+        return rows.isEmpty() ? null : rows.get(0);
+    }
 }

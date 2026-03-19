@@ -40,10 +40,11 @@ public class BillingService {
     public Map<String, Object> getUserSubscription(int gupId) {
         Query q = em.createNativeQuery(
                 "SELECT s.subscription_id, s.plan_id, s.server_instance_id, s.start_date, " +
-                "s.end_date, s.status, sp.plan_name, sp.price_monthly, sp.ai_requests_limit " +
+                "s.end_date, s.status, sp.plan_name, sp.price_monthly, sp.ai_requests_limit, " +
+                "s.grace_end_date, s.renewal_count " +
                 "FROM ts_subscription s " +
                 "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
-                "WHERE s.general_user_profile_gup_id = :gupId AND s.status IN ('active','pending_payment') " +
+                "WHERE s.general_user_profile_gup_id = :gupId AND s.status IN ('active','pending_payment','grace','suspended','expired') " +
                 "ORDER BY s.start_date DESC");
         q.setParameter("gupId", gupId);
         q.setMaxResults(1);
@@ -60,6 +61,8 @@ public class BillingService {
         sub.put("planName", row[6]);
         sub.put("priceMonthly", row[7]);
         sub.put("aiRequestsLimit", row[8]);
+        sub.put("graceEndDate", row[9] != null ? row[9].toString() : null);
+        sub.put("renewalCount", row[10] != null ? ((Number) row[10]).intValue() : 0);
         return sub;
     }
 
@@ -402,15 +405,25 @@ public class BillingService {
                 .setParameter("vid", voucherVid)
                 .executeUpdate();
 
-        // 3. Activate the user's pending subscription and link voucher
+        // 3. Activate the user's pending subscription, set end_date = start_date + 30 days, link voucher
         em.createNativeQuery(
                 "UPDATE ts_subscription SET status = 'active', voucher_vid = :vid, " +
+                "end_date = DATE_ADD(COALESCE(start_date, CURDATE()), INTERVAL 30 DAY), " +
                 "approved_by_login_id = :adminId, approved_at = NOW(), updated_at = NOW() " +
                 "WHERE general_user_profile_gup_id = :gupId AND status = 'pending_payment'")
                 .setParameter("vid", voucherVid)
                 .setParameter("adminId", adminLoginId)
                 .setParameter("gupId", gupId)
                 .executeUpdate();
+
+        // 4. Auto-generate Contabo payable voucher (dual-entry: DR Expense, CR Liability)
+        String revenueVoucherRefId = vRow[3] != null ? vRow[3].toString() : "VID-" + voucherVid;
+        try {
+            createContaboPayableVoucher(gupId, adminLoginId, revenueVoucherRefId);
+        } catch (Exception e) {
+            // Log but don't fail the approval if payable generation fails
+            System.err.println("WARNING: Failed to create Contabo payable voucher for gupId=" + gupId + ": " + e.getMessage());
+        }
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("message", "Payment approved and subscription activated");
@@ -484,6 +497,118 @@ public class BillingService {
     }
 
     // =========================================================================
+    // Contabo Payable — Auto-generated dual-entry when customer payment verified
+    // =========================================================================
+
+    /**
+     * Create a Contabo payable voucher with dual entries when a customer payment is verified.
+     * DR: Server Hosting Cost (Expense, is_sca=11 for V2 or is_sca=12 for V7)
+     * CR: Accounts Payable - Contabo (Liability, is_sca=19)
+     *
+     * @param gupId           customer's general_user_profile ID
+     * @param loginId         admin login ID who approved (or system for PayPal)
+     * @param revenueVoucherId the customer's revenue voucher ID (for cross-reference)
+     */
+    private void createContaboPayableVoucher(int gupId, int loginId, String revenueVoucherId) {
+        // Look up the customer's active subscription to determine the plan and Contabo cost
+        Query planQ = em.createNativeQuery(
+                "SELECT sp.contabo_product_id, sp.contabo_cost_usd, sp.plan_name " +
+                "FROM ts_subscription s " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "WHERE s.general_user_profile_gup_id = :gupId " +
+                "AND s.status IN ('active', 'pending_payment') " +
+                "ORDER BY s.created_at DESC");
+        planQ.setParameter("gupId", gupId);
+        planQ.setMaxResults(1);
+        @SuppressWarnings("unchecked")
+        List<Object[]> planRows = planQ.getResultList();
+        if (planRows.isEmpty()) return; // no subscription found, skip
+
+        Object[] planRow = planRows.get(0);
+        String contaboProductId = (String) planRow[0];
+        Double contaboCostUsd = planRow[1] != null ? ((Number) planRow[1]).doubleValue() : null;
+        String planName = (String) planRow[2];
+
+        if (contaboCostUsd == null || contaboCostUsd <= 0) return; // no cost defined
+
+        // Determine exchange rate (use a sensible default; can be made configurable later)
+        double exchangeRate = 306.00; // USD to LKR
+        // Try to get the latest exchange rate from the slip if available
+        try {
+            Object rateObj = em.createNativeQuery(
+                    "SELECT exchange_rate FROM ts_voucher_item_slip " +
+                    "WHERE exchange_rate IS NOT NULL AND exchange_rate > 0 " +
+                    "ORDER BY id DESC LIMIT 1")
+                    .getSingleResult();
+            if (rateObj != null) {
+                exchangeRate = ((Number) rateObj).doubleValue();
+            }
+        } catch (Exception ignored) {}
+
+        double contaboCostLkr = Math.round(contaboCostUsd * exchangeRate * 100.0) / 100.0;
+
+        // Map Contabo product to expense sub-account
+        int expenseScaId = "V7".equals(contaboProductId) ? 12 : 11; // V7=is_sca 12, V2=is_sca 11
+        int payableScaId = 19; // Contabo Hosting Payable (liability)
+
+        String payableVoucherId = "CPY-" + gupId + "-" + System.currentTimeMillis();
+
+        // Create payable voucher (is_completed=1 — obligation is confirmed, not yet paid)
+        em.createNativeQuery(
+                "INSERT INTO voucher (id, description, date, voucher_total, " +
+                "general_user_profilegup_id, voucher_typevt_id, login_sessionsession_id, " +
+                "user_loginlogin_id, branch_bid, is_active, payment_date, total_paid, " +
+                "is_completed, payment_mode_payment_mode_id, time, created_at) " +
+                "VALUES (:vid, :desc, CURDATE(), :total, :gupId, 1, 1, :loginId, 1, 1, " +
+                "NULL, 0, 1, 1, CURTIME(), NOW())")
+                .setParameter("vid", payableVoucherId)
+                .setParameter("desc", "Contabo Payable - " + planName + " (" + contaboProductId +
+                        ") [Ref: " + revenueVoucherId + "] USD " +
+                        String.format("%.2f", contaboCostUsd) + " @ " +
+                        String.format("%.2f", exchangeRate))
+                .setParameter("total", contaboCostLkr)
+                .setParameter("gupId", gupId)
+                .setParameter("loginId", loginId)
+                .executeUpdate();
+
+        // Get the payable voucher vid
+        Object vidObj = em.createNativeQuery("SELECT vid FROM voucher WHERE id = :vid")
+                .setParameter("vid", payableVoucherId)
+                .getSingleResult();
+        int vid = ((Number) vidObj).intValue();
+
+        // DR: Server Hosting Cost (Expense)
+        em.createNativeQuery(
+                "INSERT INTO voucher_item (id, description, date, is_active, amount, " +
+                "vouchervid, voucher_typevt_id, user_loginlogin_id, login_sessionsession_id, " +
+                "sub_chart_of_accountis_sca, qty, unit_price, to_be_paid_amount, created_at) " +
+                "VALUES (:itemId, :desc, CURDATE(), 1, :amount, :vid, 1, :loginId, 1, " +
+                ":scaId, 1, :amount, :amount, NOW())")
+                .setParameter("itemId", payableVoucherId + "-DR")
+                .setParameter("desc", "Contabo " + contaboProductId + " Hosting Cost - " + planName)
+                .setParameter("amount", contaboCostLkr)
+                .setParameter("vid", vid)
+                .setParameter("loginId", loginId)
+                .setParameter("scaId", expenseScaId)
+                .executeUpdate();
+
+        // CR: Accounts Payable - Contabo (Liability)
+        em.createNativeQuery(
+                "INSERT INTO voucher_item (id, description, date, is_active, amount, " +
+                "vouchervid, voucher_typevt_id, user_loginlogin_id, login_sessionsession_id, " +
+                "sub_chart_of_accountis_sca, qty, unit_price, to_be_paid_amount, created_at) " +
+                "VALUES (:itemId, :desc, CURDATE(), 1, :amount, :vid, 1, :loginId, 1, " +
+                ":scaId, 1, :amount, :amount, NOW())")
+                .setParameter("itemId", payableVoucherId + "-CR")
+                .setParameter("desc", "Contabo Hosting Payable - " + planName)
+                .setParameter("amount", contaboCostLkr)
+                .setParameter("vid", vid)
+                .setParameter("loginId", loginId)
+                .setParameter("scaId", payableScaId)
+                .executeUpdate();
+    }
+
+    // =========================================================================
     // PayPal Payment Support
     // =========================================================================
 
@@ -544,6 +669,13 @@ public class BillingService {
                 .setParameter("vid", vid)
                 .setParameter("sca", revenueScaId)
                 .executeUpdate();
+
+        // Auto-generate Contabo payable voucher (dual-entry: DR Expense, CR Liability)
+        try {
+            createContaboPayableVoucher(gupId, loginId, voucherId);
+        } catch (Exception e) {
+            System.err.println("WARNING: Failed to create Contabo payable for PayPal gupId=" + gupId + ": " + e.getMessage());
+        }
     }
 
     /**
@@ -561,8 +693,10 @@ public class BillingService {
                     .getSingleResult();
         } catch (Exception ignored) {}
 
-        // Activate and link voucher
-        String sql = "UPDATE ts_subscription SET status = 'active', approved_at = NOW(), updated_at = NOW()";
+        // Activate, set end_date, and link voucher
+        String sql = "UPDATE ts_subscription SET status = 'active', " +
+                "end_date = DATE_ADD(COALESCE(start_date, CURDATE()), INTERVAL 30 DAY), " +
+                "approved_at = NOW(), updated_at = NOW()";
         if (vidObj != null) {
             sql += ", voucher_vid = :vid";
         }
@@ -616,5 +750,555 @@ public class BillingService {
             history.add(item);
         }
         return history;
+    }
+
+    // =========================================================================
+    // Contabo Payable Balance
+    // =========================================================================
+
+    /**
+     * Get the total outstanding Contabo payable balance.
+     * This is the sum of all CPY- voucher CR items (liability, is_sca=19)
+     * minus any settlement payments (SPY- voucher DR items against is_sca=19).
+     * Also returns a breakdown of individual payable vouchers.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getContaboPayableBalance() {
+        // Total payable: sum of CR items on is_sca=19 (Contabo Hosting Payable)
+        Object totalPayableObj = em.createNativeQuery(
+                "SELECT COALESCE(SUM(vi.amount), 0) FROM voucher_item vi " +
+                "JOIN voucher v ON vi.vouchervid = v.vid " +
+                "WHERE vi.sub_chart_of_accountis_sca = 19 " +
+                "AND vi.id LIKE '%-CR' " +
+                "AND v.is_active = 1 AND vi.is_active = 1")
+                .getSingleResult();
+        double totalPayable = ((Number) totalPayableObj).doubleValue();
+
+        // Total settled: sum of DR items on is_sca=19 (settlement vouchers)
+        Object totalSettledObj = em.createNativeQuery(
+                "SELECT COALESCE(SUM(vi.amount), 0) FROM voucher_item vi " +
+                "JOIN voucher v ON vi.vouchervid = v.vid " +
+                "WHERE vi.sub_chart_of_accountis_sca = 19 " +
+                "AND vi.id LIKE '%-DR' " +
+                "AND v.is_active = 1 AND vi.is_active = 1")
+                .getSingleResult();
+        double totalSettled = ((Number) totalSettledObj).doubleValue();
+
+        double outstandingBalance = totalPayable - totalSettled;
+
+        // Count of unsettled payable vouchers (payment_date IS NULL = not yet paid to Contabo)
+        Object countObj = em.createNativeQuery(
+                "SELECT COUNT(DISTINCT v.vid) FROM voucher v " +
+                "WHERE v.id LIKE 'CPY-%' AND v.is_active = 1 AND v.payment_date IS NULL")
+                .getSingleResult();
+        int unsettledCount = ((Number) countObj).intValue();
+
+        // Recent payable vouchers (last 20)
+        Query recentQ = em.createNativeQuery(
+                "SELECT v.id, v.description, v.date, v.voucher_total, v.payment_date " +
+                "FROM voucher v " +
+                "WHERE v.id LIKE 'CPY-%' AND v.is_active = 1 " +
+                "ORDER BY v.date DESC");
+        recentQ.setMaxResults(20);
+        List<Object[]> recentRows = recentQ.getResultList();
+
+        List<Map<String, Object>> recentPayables = new ArrayList<>();
+        for (Object[] row : recentRows) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("voucherId", row[0]);
+            p.put("description", row[1]);
+            p.put("date", row[2] != null ? row[2].toString() : null);
+            p.put("amount", row[3]);
+            p.put("settled", row[4] != null); // payment_date set = settled
+            recentPayables.add(p);
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalPayable", totalPayable);
+        result.put("totalSettled", totalSettled);
+        result.put("outstandingBalance", outstandingBalance);
+        result.put("unsettledCount", unsettledCount);
+        result.put("recentPayables", recentPayables);
+        return result;
+    }
+
+    // =========================================================================
+    // Pricing Tier Analysis — Real AI costs + Contabo + Workflow add-on
+    // =========================================================================
+
+    /**
+     * Get pricing tier analysis with real AI cost data from ts_ai_usage.
+     * Returns plan details, Contabo cost, actual avg monthly AI cost per plan,
+     * workflow add-on pricing, and calculated net margin.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getPricingTierAnalysis() {
+        // Get all plans with their pricing
+        Query planQ = em.createNativeQuery(
+                "SELECT plan_id, plan_name, price_monthly, contabo_product_id, contabo_cost_usd, " +
+                "ai_requests_limit, workflow_addon_price, workflow_executions_limit " +
+                "FROM ts_subscription_plan WHERE is_active = 1 ORDER BY plan_id");
+        List<Object[]> plans = planQ.getResultList();
+
+        // Get actual average monthly AI cost per plan (from ts_ai_usage joined with ts_subscription)
+        // Groups by plan, calculates avg cost per active month per user
+        Query aiCostQ = em.createNativeQuery(
+                "SELECT sp.plan_id, " +
+                "COALESCE(SUM(au.cost), 0) AS total_cost, " +
+                "COUNT(DISTINCT au.gup_id) AS unique_users, " +
+                "SUM(au.tokens_used) AS total_tokens, " +
+                "COUNT(*) AS total_requests, " +
+                "COUNT(DISTINCT DATE_FORMAT(au.created_at, '%Y-%m')) AS active_months " +
+                "FROM ts_subscription s " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "JOIN ts_ai_usage au ON au.gup_id = s.general_user_profile_gup_id " +
+                "WHERE s.status IN ('active', 'expired') " +
+                "GROUP BY sp.plan_id");
+        List<Object[]> aiCosts = aiCostQ.getResultList();
+
+        // Build a map of plan_id -> ai cost stats
+        Map<Integer, Object[]> aiCostMap = new java.util.HashMap<>();
+        for (Object[] row : aiCosts) {
+            aiCostMap.put(((Number) row[0]).intValue(), row);
+        }
+
+        // Get workflow AI costs separately (request_type = 'workflow_ai')
+        Query wfCostQ = em.createNativeQuery(
+                "SELECT sp.plan_id, " +
+                "COALESCE(SUM(au.cost), 0) AS total_wf_cost, " +
+                "SUM(au.tokens_used) AS total_wf_tokens, " +
+                "COUNT(*) AS total_wf_requests " +
+                "FROM ts_subscription s " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "JOIN ts_ai_usage au ON au.gup_id = s.general_user_profile_gup_id " +
+                "WHERE s.status IN ('active', 'expired') " +
+                "AND au.request_type = 'workflow_ai' " +
+                "GROUP BY sp.plan_id");
+        List<Object[]> wfCosts = wfCostQ.getResultList();
+
+        Map<Integer, Object[]> wfCostMap = new java.util.HashMap<>();
+        for (Object[] row : wfCosts) {
+            wfCostMap.put(((Number) row[0]).intValue(), row);
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] plan : plans) {
+            int planId = ((Number) plan[0]).intValue();
+            String planName = (String) plan[1];
+            double priceMonthly = ((Number) plan[2]).doubleValue();
+            String contaboProduct = (String) plan[3];
+            double contaboCostUsd = plan[4] != null ? ((Number) plan[4]).doubleValue() : 0;
+            int aiRequestsLimit = plan[5] != null ? ((Number) plan[5]).intValue() : 0;
+            Double workflowAddonPrice = plan[6] != null ? ((Number) plan[6]).doubleValue() : null;
+            Integer workflowExecLimit = plan[7] != null ? ((Number) plan[7]).intValue() : null;
+
+            Map<String, Object> tier = new LinkedHashMap<>();
+            tier.put("planId", planId);
+            tier.put("planName", planName);
+            tier.put("priceMonthly", priceMonthly);
+            tier.put("contaboProduct", contaboProduct);
+            tier.put("contaboCostUsd", contaboCostUsd);
+            tier.put("aiRequestsLimit", aiRequestsLimit);
+            tier.put("workflowAddonPrice", workflowAddonPrice);
+            tier.put("workflowExecLimit", workflowExecLimit);
+
+            // Full customer price = base + workflow addon (if applicable)
+            double fullPrice = priceMonthly + (workflowAddonPrice != null ? workflowAddonPrice : 0);
+            tier.put("fullPrice", fullPrice);
+
+            // AI cost stats
+            Object[] aiRow = aiCostMap.get(planId);
+            double avgMonthlyCostPerUser = 0;
+            int totalRequests = 0;
+            int totalTokens = 0;
+            int uniqueUsers = 0;
+            if (aiRow != null) {
+                double totalCost = ((Number) aiRow[1]).doubleValue();
+                uniqueUsers = ((Number) aiRow[2]).intValue();
+                totalTokens = aiRow[3] != null ? ((Number) aiRow[3]).intValue() : 0;
+                totalRequests = ((Number) aiRow[4]).intValue();
+                int activeMonths = ((Number) aiRow[5]).intValue();
+                if (uniqueUsers > 0 && activeMonths > 0) {
+                    avgMonthlyCostPerUser = totalCost / uniqueUsers / activeMonths;
+                }
+            }
+            tier.put("aiCostAvgMonthly", Math.round(avgMonthlyCostPerUser * 1000000.0) / 1000000.0);
+            tier.put("aiTotalRequests", totalRequests);
+            tier.put("aiTotalTokens", totalTokens);
+            tier.put("aiUniqueUsers", uniqueUsers);
+
+            // Workflow AI cost stats
+            Object[] wfRow = wfCostMap.get(planId);
+            double wfCostAvg = 0;
+            int wfRequests = 0;
+            if (wfRow != null) {
+                double wfTotalCost = ((Number) wfRow[1]).doubleValue();
+                int wfTotalReq = ((Number) wfRow[3]).intValue();
+                wfRequests = wfTotalReq;
+                if (uniqueUsers > 0) {
+                    wfCostAvg = wfTotalCost / uniqueUsers;
+                }
+            }
+            tier.put("workflowAiCostAvg", Math.round(wfCostAvg * 1000000.0) / 1000000.0);
+            tier.put("workflowAiRequests", wfRequests);
+
+            // Total cost and margin
+            double totalCostUsd = contaboCostUsd + avgMonthlyCostPerUser + wfCostAvg;
+            double netMargin = fullPrice - totalCostUsd;
+            double marginPct = fullPrice > 0 ? (netMargin / fullPrice) * 100 : 0;
+            tier.put("totalCostUsd", Math.round(totalCostUsd * 100.0) / 100.0);
+            tier.put("netMargin", Math.round(netMargin * 100.0) / 100.0);
+            tier.put("marginPct", Math.round(marginPct * 10.0) / 10.0);
+
+            result.add(tier);
+        }
+        return result;
+    }
+
+    // =========================================================================
+    // Accounts & Finance — Profit & Loss Statement
+    // =========================================================================
+
+    /**
+     * Generate a Profit & Loss statement by aggregating voucher_items
+     * grouped by chart_of_account / sub_chart_of_account.
+     * Only includes completed (is_completed=1) vouchers.
+     * Accepts optional year/month filters.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getProfitAndLoss(Integer year, Integer month) {
+        // Build date filter clause
+        String dateFilter = "";
+        if (year != null && month != null) {
+            dateFilter = " AND YEAR(v.date) = " + year + " AND MONTH(v.date) = " + month;
+        } else if (year != null) {
+            dateFilter = " AND YEAR(v.date) = " + year;
+        }
+
+        // Revenue: voucher_items linked to revenue-type sub-accounts (account_type=4)
+        Query revQ = em.createNativeQuery(
+                "SELECT coa.coa_id, coa.account_name, coa.code, " +
+                "sca.is_sca, sca.sub_account_name, sca.code AS sca_code, " +
+                "COALESCE(SUM(vi.amount), 0) AS total " +
+                "FROM voucher_item vi " +
+                "JOIN voucher v ON vi.vouchervid = v.vid " +
+                "JOIN sub_chart_of_account sca ON vi.sub_chart_of_accountis_sca = sca.is_sca " +
+                "JOIN chart_of_account coa ON sca.chart_of_accountcoa_id = coa.coa_id " +
+                "JOIN main_chart_of_account mca ON coa.main_chart_of_account_id = mca.id " +
+                "WHERE mca.account_type_a_id = 4 " +
+                "AND v.is_completed = 1 AND v.is_active = 1 AND vi.is_active = 1 " +
+                "AND vi.id LIKE '%-CR' " +
+                dateFilter +
+                " GROUP BY coa.coa_id, coa.account_name, coa.code, sca.is_sca, sca.sub_account_name, sca.code " +
+                "ORDER BY coa.code, sca.code");
+        List<Object[]> revRows = revQ.getResultList();
+
+        List<Map<String, Object>> revenueItems = new ArrayList<>();
+        double totalRevenue = 0;
+        for (Object[] row : revRows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("coaId", row[0]);
+            item.put("accountName", row[1]);
+            item.put("accountCode", row[2]);
+            item.put("scaId", row[3]);
+            item.put("subAccountName", row[4]);
+            item.put("subAccountCode", row[5]);
+            double amount = ((Number) row[6]).doubleValue();
+            item.put("amount", amount);
+            totalRevenue += amount;
+            revenueItems.add(item);
+        }
+
+        // Expenses: voucher_items linked to expense-type sub-accounts (account_type=5)
+        // Note: expenses may not have sub-accounts yet, so also query by COA directly
+        Query expQ = em.createNativeQuery(
+                "SELECT coa.coa_id, coa.account_name, coa.code, " +
+                "COALESCE(SUM(vi.amount), 0) AS total " +
+                "FROM voucher_item vi " +
+                "JOIN voucher v ON vi.vouchervid = v.vid " +
+                "JOIN sub_chart_of_account sca ON vi.sub_chart_of_accountis_sca = sca.is_sca " +
+                "JOIN chart_of_account coa ON sca.chart_of_accountcoa_id = coa.coa_id " +
+                "JOIN main_chart_of_account mca ON coa.main_chart_of_account_id = mca.id " +
+                "WHERE mca.account_type_a_id = 5 " +
+                "AND v.is_completed = 1 AND v.is_active = 1 AND vi.is_active = 1 " +
+                dateFilter +
+                " GROUP BY coa.coa_id, coa.account_name, coa.code " +
+                "ORDER BY coa.code");
+        List<Object[]> expRows = expQ.getResultList();
+
+        List<Map<String, Object>> expenseItems = new ArrayList<>();
+        double totalExpenses = 0;
+        for (Object[] row : expRows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("coaId", row[0]);
+            item.put("accountName", row[1]);
+            item.put("accountCode", row[2]);
+            double amount = ((Number) row[3]).doubleValue();
+            item.put("amount", amount);
+            totalExpenses += amount;
+            expenseItems.add(item);
+        }
+
+        // Summary totals by month (last 12 months)
+        Query monthlyQ = em.createNativeQuery(
+                "SELECT YEAR(v.date) AS yr, MONTH(v.date) AS mo, " +
+                "COALESCE(SUM(CASE WHEN mca.account_type_a_id = 4 AND vi.id LIKE '%-CR' THEN vi.amount ELSE 0 END), 0) AS revenue, " +
+                "COALESCE(SUM(CASE WHEN mca.account_type_a_id = 5 THEN vi.amount ELSE 0 END), 0) AS expenses " +
+                "FROM voucher_item vi " +
+                "JOIN voucher v ON vi.vouchervid = v.vid " +
+                "JOIN sub_chart_of_account sca ON vi.sub_chart_of_accountis_sca = sca.is_sca " +
+                "JOIN chart_of_account coa ON sca.chart_of_accountcoa_id = coa.coa_id " +
+                "JOIN main_chart_of_account mca ON coa.main_chart_of_account_id = mca.id " +
+                "WHERE v.is_completed = 1 AND v.is_active = 1 AND vi.is_active = 1 " +
+                "AND v.date >= DATE_SUB(CURDATE(), INTERVAL 12 MONTH) " +
+                "GROUP BY yr, mo ORDER BY yr DESC, mo DESC");
+        List<Object[]> monthlyRows = monthlyQ.getResultList();
+
+        List<Map<String, Object>> monthlyTrend = new ArrayList<>();
+        for (Object[] row : monthlyRows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("year", ((Number) row[0]).intValue());
+            m.put("month", ((Number) row[1]).intValue());
+            m.put("revenue", ((Number) row[2]).doubleValue());
+            m.put("expenses", ((Number) row[3]).doubleValue());
+            m.put("netProfit", ((Number) row[2]).doubleValue() - ((Number) row[3]).doubleValue());
+            monthlyTrend.add(m);
+        }
+
+        // Assets summary (bank balances from debit entries)
+        Query assetsQ = em.createNativeQuery(
+                "SELECT coa.coa_id, coa.account_name, coa.code, " +
+                "COALESCE(SUM(vi.amount), 0) AS total " +
+                "FROM voucher_item vi " +
+                "JOIN voucher v ON vi.vouchervid = v.vid " +
+                "JOIN sub_chart_of_account sca ON vi.sub_chart_of_accountis_sca = sca.is_sca " +
+                "JOIN chart_of_account coa ON sca.chart_of_accountcoa_id = coa.coa_id " +
+                "JOIN main_chart_of_account mca ON coa.main_chart_of_account_id = mca.id " +
+                "WHERE mca.account_type_a_id = 1 " +
+                "AND v.is_completed = 1 AND v.is_active = 1 AND vi.is_active = 1 " +
+                "AND vi.id LIKE '%-DR' " +
+                dateFilter +
+                " GROUP BY coa.coa_id, coa.account_name, coa.code " +
+                "ORDER BY coa.code");
+        List<Object[]> assetRows = assetsQ.getResultList();
+
+        List<Map<String, Object>> assetItems = new ArrayList<>();
+        double totalAssets = 0;
+        for (Object[] row : assetRows) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("coaId", row[0]);
+            item.put("accountName", row[1]);
+            item.put("accountCode", row[2]);
+            double amount = ((Number) row[3]).doubleValue();
+            item.put("amount", amount);
+            totalAssets += amount;
+            assetItems.add(item);
+        }
+
+        // Voucher count and pending count (TemcoServers vouchers only — exclude legacy Java Institute data)
+        String tsVoucherFilter = "(id LIKE 'SSP-%' OR id LIKE 'PSP-%' OR id LIKE 'SSR-%' OR id LIKE 'ACP-%')";
+        Object totalVouchers = em.createNativeQuery(
+                "SELECT COUNT(*) FROM voucher WHERE is_active = 1 AND " + tsVoucherFilter).getSingleResult();
+        Object pendingVouchers = em.createNativeQuery(
+                "SELECT COUNT(*) FROM voucher WHERE is_active = 1 AND is_completed = 0 AND " + tsVoucherFilter).getSingleResult();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("revenue", revenueItems);
+        result.put("totalRevenue", totalRevenue);
+        result.put("expenses", expenseItems);
+        result.put("totalExpenses", totalExpenses);
+        result.put("netProfit", totalRevenue - totalExpenses);
+        result.put("assets", assetItems);
+        result.put("totalAssets", totalAssets);
+        result.put("monthlyTrend", monthlyTrend);
+        result.put("totalVouchers", ((Number) totalVouchers).intValue());
+        result.put("pendingVouchers", ((Number) pendingVouchers).intValue());
+        result.put("filterYear", year);
+        result.put("filterMonth", month);
+        return result;
+    }
+
+    // =========================================================================
+    // Subscription Billing Cycle — Renewal, Grace, Expiry, Suspension
+    // =========================================================================
+
+    /**
+     * Renew an active/grace/expired subscription: extend end_date by 30 days from today,
+     * reset status to 'active', increment renewal_count, clear grace_end_date.
+     * Called after admin approves a renewal payment.
+     */
+    public Map<String, Object> renewSubscription(int gupId, int adminLoginId) {
+        int updated = em.createNativeQuery(
+                "UPDATE ts_subscription SET status = 'active', " +
+                "start_date = CURDATE(), " +
+                "end_date = DATE_ADD(CURDATE(), INTERVAL 30 DAY), " +
+                "grace_end_date = NULL, last_reminder_sent = NULL, " +
+                "renewal_count = renewal_count + 1, " +
+                "approved_by_login_id = :adminId, approved_at = NOW(), updated_at = NOW() " +
+                "WHERE general_user_profile_gup_id = :gupId " +
+                "AND status IN ('active', 'grace', 'expired', 'suspended')")
+                .setParameter("adminId", adminLoginId)
+                .setParameter("gupId", gupId)
+                .executeUpdate();
+        if (updated == 0) {
+            throw new IllegalStateException("No renewable subscription found for this user");
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("message", "Subscription renewed for 30 days");
+        result.put("gupId", gupId);
+        return result;
+    }
+
+    /**
+     * Find subscriptions expiring within N days (for reminder emails).
+     * Returns list of {gupId, email, firstName, planName, endDate, daysLeft}.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> findSubscriptionsExpiringWithin(int days) {
+        Query q = em.createNativeQuery(
+                "SELECT s.subscription_id, s.general_user_profile_gup_id, " +
+                "gup.email, gup.first_name, gup.last_name, " +
+                "sp.plan_name, s.end_date, DATEDIFF(s.end_date, CURDATE()) AS days_left, " +
+                "s.last_reminder_sent " +
+                "FROM ts_subscription s " +
+                "JOIN general_user_profile gup ON s.general_user_profile_gup_id = gup.gup_id " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "WHERE s.status = 'active' " +
+                "AND s.end_date IS NOT NULL " +
+                "AND DATEDIFF(s.end_date, CURDATE()) BETWEEN 0 AND :days " +
+                "ORDER BY s.end_date ASC");
+        q.setParameter("days", days);
+        List<Object[]> rows = q.getResultList();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("subscriptionId", row[0]);
+            m.put("gupId", ((Number) row[1]).intValue());
+            m.put("email", row[2]);
+            m.put("firstName", row[3]);
+            m.put("lastName", row[4]);
+            m.put("planName", row[5]);
+            m.put("endDate", row[6] != null ? row[6].toString() : null);
+            m.put("daysLeft", ((Number) row[7]).intValue());
+            m.put("lastReminderSent", row[8] != null ? row[8].toString() : null);
+            result.add(m);
+        }
+        return result;
+    }
+
+    /**
+     * Find subscriptions that have passed their end_date and are still 'active'.
+     * These need to be moved to 'grace' status.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> findExpiredActiveSubscriptions() {
+        Query q = em.createNativeQuery(
+                "SELECT s.subscription_id, s.general_user_profile_gup_id, " +
+                "gup.email, gup.first_name, sp.plan_name, s.end_date " +
+                "FROM ts_subscription s " +
+                "JOIN general_user_profile gup ON s.general_user_profile_gup_id = gup.gup_id " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "WHERE s.status = 'active' " +
+                "AND s.end_date IS NOT NULL AND s.end_date < CURDATE()");
+        List<Object[]> rows = q.getResultList();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("subscriptionId", ((Number) row[0]).intValue());
+            m.put("gupId", ((Number) row[1]).intValue());
+            m.put("email", row[2]);
+            m.put("firstName", row[3]);
+            m.put("planName", row[4]);
+            m.put("endDate", row[5] != null ? row[5].toString() : null);
+            result.add(m);
+        }
+        return result;
+    }
+
+    /**
+     * Move subscription to 'grace' status with a 5-day grace window.
+     */
+    public void moveToGrace(int subscriptionId) {
+        em.createNativeQuery(
+                "UPDATE ts_subscription SET status = 'grace', " +
+                "grace_end_date = DATE_ADD(CURDATE(), INTERVAL 5 DAY), " +
+                "updated_at = NOW() WHERE subscription_id = :sid")
+                .setParameter("sid", subscriptionId)
+                .executeUpdate();
+    }
+
+    /**
+     * Find subscriptions in 'grace' status whose grace_end_date has passed.
+     * These need to be moved to 'expired' and their servers suspended.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> findExpiredGraceSubscriptions() {
+        Query q = em.createNativeQuery(
+                "SELECT s.subscription_id, s.general_user_profile_gup_id, " +
+                "gup.email, gup.first_name, sp.plan_name, s.grace_end_date, " +
+                "si.contabo_instance_id, si.instance_id AS local_instance_id " +
+                "FROM ts_subscription s " +
+                "JOIN general_user_profile gup ON s.general_user_profile_gup_id = gup.gup_id " +
+                "JOIN ts_subscription_plan sp ON s.plan_id = sp.plan_id " +
+                "LEFT JOIN ts_server_instance si ON s.server_instance_id = si.instance_id " +
+                "WHERE s.status = 'grace' " +
+                "AND s.grace_end_date IS NOT NULL AND s.grace_end_date < CURDATE()");
+        List<Object[]> rows = q.getResultList();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("subscriptionId", ((Number) row[0]).intValue());
+            m.put("gupId", ((Number) row[1]).intValue());
+            m.put("email", row[2]);
+            m.put("firstName", row[3]);
+            m.put("planName", row[4]);
+            m.put("graceEndDate", row[5] != null ? row[5].toString() : null);
+            m.put("contaboInstanceId", row[6] != null ? ((Number) row[6]).longValue() : null);
+            m.put("localInstanceId", row[7] != null ? ((Number) row[7]).intValue() : null);
+            result.add(m);
+        }
+        return result;
+    }
+
+    /**
+     * Mark subscription as 'suspended' (server stopped, awaiting renewal or cancellation).
+     */
+    public void suspendSubscription(int subscriptionId) {
+        em.createNativeQuery(
+                "UPDATE ts_subscription SET status = 'suspended', updated_at = NOW() " +
+                "WHERE subscription_id = :sid")
+                .setParameter("sid", subscriptionId)
+                .executeUpdate();
+    }
+
+    /**
+     * Get the Contabo instance ID for a user's server (for restart after renewal).
+     * Returns 0 if no server found.
+     */
+    public long getContaboInstanceIdForUser(int gupId) {
+        try {
+            Object result = em.createNativeQuery(
+                    "SELECT si.contabo_instance_id FROM ts_server_instance si " +
+                    "JOIN ts_subscription s ON s.server_instance_id = si.instance_id " +
+                    "WHERE s.general_user_profile_gup_id = :gupId " +
+                    "ORDER BY si.created_at DESC")
+                    .setParameter("gupId", gupId)
+                    .setMaxResults(1)
+                    .getSingleResult();
+            return result != null ? ((Number) result).longValue() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Mark the last reminder sent date to avoid duplicate reminders on the same day.
+     */
+    public void markReminderSent(int subscriptionId) {
+        em.createNativeQuery(
+                "UPDATE ts_subscription SET last_reminder_sent = CURDATE(), updated_at = NOW() " +
+                "WHERE subscription_id = :sid")
+                .setParameter("sid", subscriptionId)
+                .executeUpdate();
     }
 }

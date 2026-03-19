@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
   Loader2, Check, X, Eye, ExternalLink, RefreshCw, Server,
-  CreditCard, Clock, AlertCircle, CheckCircle, XCircle, Globe, FileText
+  CreditCard, Clock, AlertCircle, CheckCircle, XCircle, Globe, FileText,
+  AlertTriangle, ShieldOff, RotateCw
 } from 'lucide-react'
 import api from '../api/config'
 
@@ -371,10 +372,31 @@ export function SubscriptionsTab() {
 
   const filteredSubs = filter === 'all' ? subs : subs.filter(s => s.status === filter)
 
+  const [renewLoading, setRenewLoading] = useState(null)
+  const [renewResult, setRenewResult] = useState(null)
+
+  const handleRenew = async (gupId, customerName) => {
+    if (!confirm(`Renew subscription for ${customerName}? This will extend by 30 days and restart their server if suspended.`)) return
+    setRenewLoading(gupId)
+    setRenewResult(null)
+    try {
+      const res = await api.post(`/admin/subscriptions/${gupId}/renew`)
+      setRenewResult({ success: true, message: res.data.message || 'Subscription renewed', serverRestarted: res.data.serverRestarted })
+      await fetchSubs()
+    } catch (err) {
+      setRenewResult({ success: false, message: err.response?.data?.error || 'Renewal failed' })
+    } finally {
+      setRenewLoading(null)
+    }
+  }
+
   const statusBadge = (status) => {
     const map = {
       active: 'bg-green-50 text-green-600 border-green-200',
       pending_payment: 'bg-amber-50 text-amber-600 border-amber-200',
+      grace: 'bg-orange-50 text-orange-600 border-orange-200',
+      suspended: 'bg-red-50 text-red-600 border-red-200',
+      expired: 'bg-gray-100 text-gray-500 border-gray-300',
       cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
       rejected: 'bg-red-50 text-red-500 border-red-200',
     }
@@ -384,6 +406,9 @@ export function SubscriptionsTab() {
   const statusIcon = (status) => {
     if (status === 'active') return <CheckCircle className="w-3 h-3" />
     if (status === 'pending_payment') return <Clock className="w-3 h-3" />
+    if (status === 'grace') return <AlertTriangle className="w-3 h-3" />
+    if (status === 'suspended') return <ShieldOff className="w-3 h-3" />
+    if (status === 'expired') return <Clock className="w-3 h-3" />
     if (status === 'rejected') return <XCircle className="w-3 h-3" />
     return <AlertCircle className="w-3 h-3" />
   }
@@ -392,6 +417,9 @@ export function SubscriptionsTab() {
     all: subs.length,
     active: subs.filter(s => s.status === 'active').length,
     pending_payment: subs.filter(s => s.status === 'pending_payment').length,
+    grace: subs.filter(s => s.status === 'grace').length,
+    suspended: subs.filter(s => s.status === 'suspended').length,
+    expired: subs.filter(s => s.status === 'expired').length,
     cancelled: subs.filter(s => s.status === 'cancelled').length,
     rejected: subs.filter(s => s.status === 'rejected').length,
   }
@@ -406,6 +434,16 @@ export function SubscriptionsTab() {
 
   return (
     <div>
+      {renewResult && (
+        <div className={`mb-4 p-3 rounded-lg border text-sm flex items-center gap-2 ${
+          renewResult.success ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'
+        }`}>
+          {renewResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+          {renewResult.message}
+          {renewResult.serverRestarted && <span className="text-xs text-green-600 ml-2">(Server restarted)</span>}
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-lg font-semibold text-gray-900">All Subscriptions</h2>
         <button onClick={fetchSubs} className="flex items-center gap-2 px-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition text-gray-600">
@@ -419,6 +457,9 @@ export function SubscriptionsTab() {
           { id: 'all', label: 'All' },
           { id: 'active', label: 'Active' },
           { id: 'pending_payment', label: 'Pending' },
+          { id: 'grace', label: 'Grace' },
+          { id: 'suspended', label: 'Suspended' },
+          { id: 'expired', label: 'Expired' },
           { id: 'cancelled', label: 'Cancelled' },
           { id: 'rejected', label: 'Rejected' },
         ].map(tab => (
@@ -460,6 +501,7 @@ export function SubscriptionsTab() {
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Server</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Start</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase">End</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -493,7 +535,21 @@ export function SubscriptionsTab() {
                       )}
                     </td>
                     <td className="py-3 px-4 text-xs text-gray-500">{s.startDate || '—'}</td>
-                    <td className="py-3 px-4 text-xs text-gray-500">{s.endDate || '—'}</td>
+                    <td className={`py-3 px-4 text-xs ${
+                      s.status === 'grace' || s.status === 'suspended' ? 'text-red-500 font-medium' : 'text-gray-500'
+                    }`}>{s.endDate || '—'}</td>
+                    <td className="py-3 px-4 text-right">
+                      {['grace', 'suspended', 'expired', 'active'].includes(s.status) && (
+                        <button
+                          onClick={() => handleRenew(s.gupId, s.customerName)}
+                          disabled={renewLoading === s.gupId}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-500 hover:bg-green-600 text-white rounded-lg transition disabled:opacity-50"
+                        >
+                          {renewLoading === s.gupId ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
+                          Renew
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

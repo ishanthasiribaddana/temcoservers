@@ -32,6 +32,7 @@ public class AdminResource {
     @EJB
     private NotificationService notificationService;
 
+
     private static final String SUPER_ADMIN = "Super Admin";
     private static final String SYSTEM_ADMIN = "System Admin";
     private static final java.util.logging.Logger LOG = java.util.logging.Logger.getLogger(AdminResource.class.getName());
@@ -474,9 +475,15 @@ public class AdminResource {
                 }
             }
 
-            // 3. Send notification to customer
+            // 3. Send notification to customer with server details
             try {
-                notificationService.notifyPaymentApproved(adminGupId, gupId);
+                String serverIp = (String) result.get("serverIp");
+                String notifyPlan = null;
+                try {
+                    Map<String, Object> sub = billingService.getUserSubscription(gupId);
+                    if (sub != null) notifyPlan = (String) sub.get("planName");
+                } catch (Exception ignored2) {}
+                notificationService.notifyPaymentApproved(adminGupId, gupId, serverIp, notifyPlan, "root");
             } catch (Exception ignored) {}
 
             return Response.ok(result).build();
@@ -517,6 +524,88 @@ public class AdminResource {
         }
     }
 
+    @POST
+    @Path("/subscriptions/{gupId}/renew")
+    public Response renewSubscription(
+            @HeaderParam("Authorization") String authHeader,
+            @PathParam("gupId") int gupId,
+            Map<String, Object> body) {
+        Map<String, Object> adminUser = validateAdminUser(authHeader);
+        if (adminUser == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            int adminLoginId = (int) adminUser.get("loginId");
+            Map<String, Object> result = billingService.renewSubscription(gupId, adminLoginId);
+
+            // Restart server if it was suspended
+            try {
+                long contaboId = billingService.getContaboInstanceIdForUser(gupId);
+                if (contaboId > 0 && contaboService.isConfigured()) {
+                    contaboService.performAction(contaboId, "start");
+                    result.put("serverRestarted", true);
+                }
+            } catch (Exception e) {
+                LOG.warning("Server restart after renewal failed (non-fatal): " + e.getMessage());
+                result.put("serverRestarted", false);
+            }
+
+            // Send renewal confirmation
+            try {
+                int adminGupId = (int) adminUser.get("gupId");
+                String planName = null;
+                Map<String, Object> sub = billingService.getUserSubscription(gupId);
+                if (sub != null) planName = (String) sub.get("planName");
+                String serverIp = null;
+                notificationService.notifyPaymentApproved(adminGupId, gupId, serverIp, planName, "root");
+            } catch (Exception ignored) {}
+
+            return Response.ok(result).build();
+        } catch (IllegalStateException e) {
+            return Response.status(409).entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @GET
+    @Path("/accounts/profit-loss")
+    public Response getProfitAndLoss(
+            @HeaderParam("Authorization") String authHeader,
+            @QueryParam("year") Integer year,
+            @QueryParam("month") Integer month) {
+        if (validateAdmin(authHeader) == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            return Response.ok(billingService.getProfitAndLoss(year, month)).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @GET
+    @Path("/accounts/pricing-tiers")
+    public Response getPricingTierAnalysis(@HeaderParam("Authorization") String authHeader) {
+        if (validateAdmin(authHeader) == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            return Response.ok(billingService.getPricingTierAnalysis()).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @GET
+    @Path("/accounts/contabo-payable")
+    public Response getContaboPayableBalance(@HeaderParam("Authorization") String authHeader) {
+        if (validateAdmin(authHeader) == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            return Response.ok(billingService.getContaboPayableBalance()).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
     @GET
     @Path("/subscriptions")
     public Response listSubscriptions(@HeaderParam("Authorization") String authHeader) {
@@ -524,6 +613,69 @@ public class AdminResource {
             return Response.status(403).entity(Map.of("error", "Admin access required")).build();
         try {
             return Response.ok(billingService.listAllSubscriptions()).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
+    @POST
+    @Path("/servers/{instanceId}/set-credentials")
+    public Response setServerCredentials(
+            @HeaderParam("Authorization") String authHeader,
+            @PathParam("instanceId") int instanceId,
+            Map<String, Object> body) {
+        Map<String, Object> adminUser = validateAdminUser(authHeader);
+        if (adminUser == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            String password = body != null ? (String) body.get("password") : null;
+            boolean notify = body != null && Boolean.TRUE.equals(body.get("notifyStudent"));
+
+            if (password == null || password.isBlank()) {
+                return Response.status(400).entity(Map.of("error", "Password is required")).build();
+            }
+
+            // Update the initial_password (transactional via AdminService)
+            int updated = adminService.setServerCredentials(instanceId, password);
+
+            if (updated == 0) {
+                return Response.status(404).entity(Map.of("error", "Server instance not found")).build();
+            }
+
+            // Optionally send credentials to the student via notification + email
+            if (notify) {
+                try {
+                    Object[] serverInfo = adminService.getServerInfo(instanceId);
+                    if (serverInfo == null) throw new RuntimeException("Server info not found");
+
+                    int studentGupId = ((Number) serverInfo[0]).intValue();
+                    String ip = (String) serverInfo[1];
+                    String defaultUser = serverInfo[2] != null ? (String) serverInfo[2] : "root";
+                    String planName = serverInfo[3] != null ? (String) serverInfo[3] : "Server";
+
+                    int adminGupId = (int) adminUser.get("gupId");
+
+                    String content = String.format(
+                            "Your server credentials are ready!\n\n" +
+                            "--- Server Access Details ---\n" +
+                            "Plan: %s\n" +
+                            "Server IP: %s\n" +
+                            "SSH User: %s\n" +
+                            "Password: %s\n" +
+                            "SSH Command: ssh %s@%s\n\n" +
+                            "IMPORTANT: Please change your password immediately after first login.\n" +
+                            "Run: passwd\n" +
+                            "--- End Server Details ---\n\n" +
+                            "Access your server from the TemcoServers dashboard. Thank you!",
+                            planName, ip, defaultUser, password, defaultUser, ip);
+
+                    notificationService.sendNotification(adminGupId, studentGupId, 1, 6, content);
+                } catch (Exception e) {
+                    LOG.warning("Failed to notify student of credentials: " + e.getMessage());
+                }
+            }
+
+            return Response.ok(Map.of("message", "Credentials set successfully", "notified", notify)).build();
         } catch (Exception e) {
             return Response.status(500).entity(Map.of("error", e.getMessage())).build();
         }

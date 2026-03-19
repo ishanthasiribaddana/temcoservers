@@ -1,16 +1,23 @@
 package com.temcoservers.service;
 
+import jakarta.ejb.EJB;
 import jakarta.ejb.Stateless;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import java.util.*;
+import java.util.logging.Logger;
 
 @Stateless
 public class NotificationService {
 
+    private static final Logger LOG = Logger.getLogger(NotificationService.class.getName());
+
     @PersistenceContext(unitName = "temcoserversPU")
     private EntityManager em;
+
+    @EJB
+    private EmailService emailService;
 
     // Communication type IDs
     private static final int TYPE_EMAIL = 1;
@@ -33,6 +40,41 @@ public class NotificationService {
                 .setParameter("sentBy", sentByGupId)
                 .setParameter("sentTo", sentToGupId)
                 .executeUpdate();
+
+        // Send actual email if SMTP is configured and this is an email-type notification
+        if (typeId == TYPE_EMAIL && emailService.isConfigured()) {
+            try {
+                String recipientEmail = getEmailForGupId(sentToGupId);
+                if (recipientEmail != null && !recipientEmail.isBlank()) {
+                    String subject = getSubjectForPurpose(purposeId);
+                    emailService.sendEmailAsync(recipientEmail, subject, content);
+                }
+            } catch (Exception e) {
+                LOG.warning("Failed to send email for gupId=" + sentToGupId + ": " + e.getMessage());
+            }
+        }
+    }
+
+    private String getEmailForGupId(int gupId) {
+        try {
+            Object result = em.createNativeQuery(
+                    "SELECT email FROM general_user_profile WHERE gup_id = :gupId")
+                    .setParameter("gupId", gupId)
+                    .getSingleResult();
+            return result != null ? result.toString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String getSubjectForPurpose(int purposeId) {
+        switch (purposeId) {
+            case PURPOSE_PAYMENT_REMINDER: return "TemcoServers - Payment Update";
+            case PURPOSE_SERVER_PROVISIONED: return "TemcoServers - Your Server is Ready!";
+            case PURPOSE_SUBSCRIPTION_RENEWAL: return "TemcoServers - Subscription Update";
+            case PURPOSE_AI_USAGE_ALERT: return "TemcoServers - AI Usage Alert";
+            default: return "TemcoServers - Notification";
+        }
     }
 
     public void notifySubscriptionCreated(int adminGupId, int userGupId, String planName) {
@@ -63,9 +105,28 @@ public class NotificationService {
     }
 
     public void notifyPaymentApproved(int adminGupId, int userGupId) {
-        String content = "Your payment has been verified and approved. Your TemcoServers subscription is now active. " +
-                "You can access your server from the dashboard. Thank you!";
-        sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_SERVER_PROVISIONED, content);
+        notifyPaymentApproved(adminGupId, userGupId, null, null, null);
+    }
+
+    public void notifyPaymentApproved(int adminGupId, int userGupId,
+                                       String serverIp, String planName, String defaultUser) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Your payment has been verified and approved. Your TemcoServers subscription is now active.");
+
+        if (serverIp != null && !serverIp.isBlank()) {
+            sb.append("\n\n--- Your Server Details ---");
+            if (planName != null) sb.append("\nPlan: ").append(planName);
+            sb.append("\nServer IP: ").append(serverIp);
+            sb.append("\nSSH User: ").append(defaultUser != null ? defaultUser : "root");
+            sb.append("\nSSH Command: ssh ").append(defaultUser != null ? defaultUser : "root")
+                    .append("@").append(serverIp);
+            sb.append("\n\nIMPORTANT: Your initial root password was sent to the administrator. ");
+            sb.append("Please contact support to receive your SSH credentials, then change your password immediately.");
+            sb.append("\n--- End Server Details ---");
+        }
+
+        sb.append("\n\nYou can view your server from the dashboard. Thank you for choosing TemcoServers!");
+        sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_SERVER_PROVISIONED, sb.toString());
     }
 
     public void notifyPaymentRejected(int adminGupId, int userGupId, String reason) {
@@ -82,6 +143,41 @@ public class NotificationService {
                 "Consider upgrading your plan for more AI code generation capacity.",
                 usedRequests, limit);
         sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_AI_USAGE_ALERT, content);
+    }
+
+    public void notifyRenewalReminder(int userGupId, String firstName, String planName,
+                                       String endDate, int daysLeft) {
+        String content = String.format(
+                "Hi %s,\n\nYour TemcoServers '%s' subscription expires on %s (%d day%s remaining).\n\n" +
+                "To continue using your server without interruption, please renew your subscription " +
+                "by uploading a bank transfer slip from your Billing page.\n\n" +
+                "If your subscription expires, you will have a 5-day grace period before your server is suspended.\n\n" +
+                "Thank you for choosing TemcoServers!",
+                firstName != null ? firstName : "Customer", planName, endDate,
+                daysLeft, daysLeft == 1 ? "" : "s");
+        sendNotification(userGupId, userGupId, TYPE_EMAIL, PURPOSE_SUBSCRIPTION_RENEWAL, content);
+    }
+
+    public void notifyGracePeriod(int userGupId, String firstName, String planName, String graceEndDate) {
+        String content = String.format(
+                "Hi %s,\n\nYour TemcoServers '%s' subscription has expired and entered a 5-day grace period.\n\n" +
+                "Your server is still running, but it will be SUSPENDED on %s if payment is not received.\n\n" +
+                "Please renew immediately from your Billing page to avoid service interruption.\n\n" +
+                "If you have already submitted payment, please allow up to 24 hours for verification.",
+                firstName != null ? firstName : "Customer", planName, graceEndDate);
+        sendNotification(userGupId, userGupId, TYPE_EMAIL, PURPOSE_SUBSCRIPTION_RENEWAL, content);
+    }
+
+    public void notifyServerSuspended(int userGupId, String firstName, String planName) {
+        String content = String.format(
+                "Hi %s,\n\nYour TemcoServers '%s' subscription grace period has ended.\n\n" +
+                "Your server has been SUSPENDED. Your data is preserved, but the server is stopped " +
+                "and cannot be accessed until you renew your subscription.\n\n" +
+                "To restore your server, please submit a renewal payment from your Billing page. " +
+                "Your server will be restarted automatically once payment is verified.\n\n" +
+                "If you no longer need the server, no further action is required.",
+                firstName != null ? firstName : "Customer", planName);
+        sendNotification(userGupId, userGupId, TYPE_EMAIL, PURPOSE_SUBSCRIPTION_RENEWAL, content);
     }
 
     @SuppressWarnings("unchecked")

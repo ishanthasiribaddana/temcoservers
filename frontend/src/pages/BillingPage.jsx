@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Server, Code, LogOut, User, CreditCard, Activity, Terminal, Bell,
+  Server, Code, LogOut, User, CreditCard, Activity, Bell,
   Check, Loader2, ArrowLeft, Sparkles, Cpu, HardDrive, Zap, X,
-  Receipt, Calendar, DollarSign, Crown
+  Receipt, Calendar, DollarSign, Crown, AlertTriangle, ShieldOff, Clock
 } from 'lucide-react'
 import api from '../api/config'
 
@@ -83,7 +83,6 @@ function BillingPage() {
     { icon: Activity, label: 'Overview', path: '/dashboard' },
     { icon: Server, label: 'My Servers', path: '/dashboard' },
     { icon: Code, label: 'AI Assistant', path: '/ai' },
-    { icon: Terminal, label: 'Terminal', path: '/dashboard' },
     { icon: CreditCard, label: 'Billing', path: '/billing', active: true },
     { icon: Bell, label: 'Notifications', path: '/notifications' },
     { icon: User, label: 'Profile', path: '/dashboard' },
@@ -257,7 +256,11 @@ function BillingPage() {
                 {subscription ? (
                   <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                     <div className={`h-2 bg-gradient-to-r ${
-                      subscription.status === 'pending_payment' ? 'from-amber-400 to-amber-500' : 'from-green-400 to-green-600'
+                      subscription.status === 'pending_payment' ? 'from-amber-400 to-amber-500' :
+                      subscription.status === 'grace' ? 'from-orange-400 to-orange-500' :
+                      subscription.status === 'suspended' ? 'from-red-400 to-red-600' :
+                      subscription.status === 'expired' ? 'from-gray-400 to-gray-500' :
+                      'from-green-400 to-green-600'
                     }`} />
                     <div className="p-8">
                       {subscription.status === 'pending_payment' && (
@@ -277,24 +280,87 @@ function BillingPage() {
                         </div>
                       )}
 
+                      {subscription.status === 'grace' && (
+                        <div className="mb-6 p-4 bg-orange-50 border border-orange-200 rounded-xl">
+                          <div className="flex items-center gap-2 text-orange-700 font-medium text-sm mb-1">
+                            <AlertTriangle className="w-4 h-4" /> Grace Period — Action Required
+                          </div>
+                          <p className="text-xs text-orange-600 mb-2">
+                            Your subscription has expired. You have until <strong>{subscription.graceEndDate}</strong> to renew before your server is suspended.
+                          </p>
+                          <p className="text-xs text-orange-500">
+                            Please contact support to process a renewal payment immediately.
+                          </p>
+                        </div>
+                      )}
+
+                      {subscription.status === 'suspended' && (
+                        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                          <div className="flex items-center gap-2 text-red-700 font-medium text-sm mb-1">
+                            <ShieldOff className="w-4 h-4" /> Subscription Suspended
+                          </div>
+                          <p className="text-xs text-red-600 mb-2">
+                            Your subscription has been suspended due to non-renewal. Your server has been stopped.
+                          </p>
+                          <p className="text-xs text-red-500">
+                            Contact support to renew your subscription and restore server access. Your data is preserved.
+                          </p>
+                        </div>
+                      )}
+
+                      {subscription.status === 'expired' && (
+                        <div className="mb-6 p-4 bg-gray-50 border border-gray-300 rounded-xl">
+                          <div className="flex items-center gap-2 text-gray-700 font-medium text-sm mb-1">
+                            <Clock className="w-4 h-4" /> Subscription Expired
+                          </div>
+                          <p className="text-xs text-gray-600">
+                            Your subscription has expired. Please subscribe to a new plan to continue using TemcoServers.
+                          </p>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                           <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                            subscription.status === 'pending_payment' ? 'bg-amber-50' : 'bg-green-50'
+                            subscription.status === 'pending_payment' ? 'bg-amber-50' :
+                            subscription.status === 'grace' ? 'bg-orange-50' :
+                            subscription.status === 'suspended' ? 'bg-red-50' :
+                            subscription.status === 'expired' ? 'bg-gray-100' :
+                            'bg-green-50'
                           }`}>
                             <CreditCard className={`w-6 h-6 ${
-                              subscription.status === 'pending_payment' ? 'text-amber-500' : 'text-green-500'
+                              subscription.status === 'pending_payment' ? 'text-amber-500' :
+                              subscription.status === 'grace' ? 'text-orange-500' :
+                              subscription.status === 'suspended' ? 'text-red-500' :
+                              subscription.status === 'expired' ? 'text-gray-400' :
+                              'text-green-500'
                             }`} />
                           </div>
                           <div>
                             <h3 className="text-xl font-bold text-gray-900">{subscription.planName}</h3>
-                            {subscription.status === 'active' ? (
+                            {subscription.status === 'active' && (
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
                                 <Check className="w-3 h-3" /> Active
                               </span>
-                            ) : (
+                            )}
+                            {subscription.status === 'pending_payment' && (
                               <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
                                 <Activity className="w-3 h-3" /> Pending Payment
+                              </span>
+                            )}
+                            {subscription.status === 'grace' && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">
+                                <AlertTriangle className="w-3 h-3" /> Grace Period
+                              </span>
+                            )}
+                            {subscription.status === 'suspended' && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                                <ShieldOff className="w-3 h-3" /> Suspended
+                              </span>
+                            )}
+                            {subscription.status === 'expired' && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                <Clock className="w-3 h-3" /> Expired
                               </span>
                             )}
                           </div>
@@ -305,7 +371,7 @@ function BillingPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 mb-8">
+                      <div className={`grid ${subscription.status === 'grace' ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2 lg:grid-cols-3'} gap-4 mb-8`}>
                         <div className="p-4 bg-gray-50 rounded-xl">
                           <div className="text-xs text-gray-500 mb-1">Start Date</div>
                           <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
@@ -313,6 +379,28 @@ function BillingPage() {
                             {subscription.startDate}
                           </div>
                         </div>
+                        {subscription.endDate && (
+                          <div className={`p-4 rounded-xl ${
+                            subscription.status === 'grace' || subscription.status === 'suspended' ? 'bg-red-50' : 'bg-gray-50'
+                          }`}>
+                            <div className="text-xs text-gray-500 mb-1">{subscription.status === 'active' ? 'Renewal Date' : 'Expired On'}</div>
+                            <div className={`text-sm font-medium flex items-center gap-1.5 ${
+                              subscription.status === 'grace' || subscription.status === 'suspended' ? 'text-red-600' : 'text-gray-900'
+                            }`}>
+                              <Calendar className="w-3.5 h-3.5" />
+                              {subscription.endDate}
+                            </div>
+                          </div>
+                        )}
+                        {subscription.status === 'grace' && subscription.graceEndDate && (
+                          <div className="p-4 bg-orange-50 rounded-xl">
+                            <div className="text-xs text-orange-500 mb-1">Suspend Date</div>
+                            <div className="text-sm font-medium text-orange-700 flex items-center gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              {subscription.graceEndDate}
+                            </div>
+                          </div>
+                        )}
                         <div className="p-4 bg-gray-50 rounded-xl">
                           <div className="text-xs text-gray-500 mb-1">AI Requests</div>
                           <div className="text-sm font-medium text-gray-900 flex items-center gap-1.5">
@@ -322,14 +410,16 @@ function BillingPage() {
                         </div>
                       </div>
 
-                      <button
-                        onClick={handleCancel}
-                        disabled={actionLoading === 'cancel'}
-                        className="flex items-center gap-2 px-4 py-2 text-sm border border-red-200 text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
-                      >
-                        {actionLoading === 'cancel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-                        Cancel Subscription
-                      </button>
+                      {(subscription.status === 'active' || subscription.status === 'pending_payment') && (
+                        <button
+                          onClick={handleCancel}
+                          disabled={actionLoading === 'cancel'}
+                          className="flex items-center gap-2 px-4 py-2 text-sm border border-red-200 text-red-500 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
+                        >
+                          {actionLoading === 'cancel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                          Cancel Subscription
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (

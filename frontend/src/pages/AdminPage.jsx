@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import {
   Server, Code, LogOut, User, CreditCard, Activity, Users, BarChart3,
   Search, ChevronLeft, ChevronRight, Globe, Cpu, Circle, DollarSign,
-  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink
+  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail
 } from 'lucide-react'
 import api from '../api/config'
 import { APP_VERSION } from '../version'
 import { UsersTab, RolesTab, ModulesPagesTab } from './AdminRbacTabs'
 import { PaymentsTab, SubscriptionsTab } from './AdminPaymentsTabs'
+import { AccountsFinanceTab } from './AdminAccountsTab'
+import { EmailOverviewTab, EmailTemplatesTab, EmailGroupsTab, EmailCampaignsTab, EmailScheduleTab } from './AdminEmailCampaignTabs'
 
 function AdminPage() {
   const navigate = useNavigate()
@@ -97,9 +99,14 @@ function AdminPage() {
     { icon: BarChart3, label: 'Overview', tab: 'overview' },
     { icon: Users, label: 'Customers', tab: 'customers' },
     { icon: Server, label: 'Servers', tab: 'servers' },
-    { icon: CreditCard, label: 'Revenue', tab: 'revenue' },
+    { icon: Landmark, label: 'Accounts & Finance', tab: 'accounts', section: true, sectionLabel: 'Finance' },
     { icon: DollarSign, label: 'Payments', tab: 'payments', section: true, sectionLabel: 'Billing' },
     { icon: CreditCard, label: 'Subscriptions', tab: 'subscriptions' },
+    { icon: Mail, label: 'Campaigns', tab: 'email-overview', section: true, sectionLabel: 'Email Marketing' },
+    { icon: Mail, label: 'Templates', tab: 'email-templates' },
+    { icon: Users, label: 'Audiences', tab: 'email-groups' },
+    { icon: Mail, label: 'Send', tab: 'email-send' },
+    { icon: Mail, label: 'Schedules', tab: 'email-schedules' },
     { icon: Users, label: 'User Mgmt', tab: 'rbac-users', section: true, sectionLabel: 'Access Control' },
     { icon: Shield, label: 'Roles & Perms', tab: 'rbac-roles' },
     { icon: Activity, label: 'Modules & Pages', tab: 'rbac-modules' },
@@ -448,11 +455,61 @@ function AdminPage() {
           </div>
         )}
 
+        {/* Accounts & Finance Tab */}
+        {activeTab === 'accounts' && <AccountsFinanceTab />}
+
         {/* Payments Tab */}
         {activeTab === 'payments' && <PaymentsTab />}
 
         {/* Subscriptions Tab */}
         {activeTab === 'subscriptions' && <SubscriptionsTab />}
+
+        {/* Email Campaign Tabs */}
+        {activeTab === 'email-overview' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-primary-500 to-accent-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Email Campaign Dashboard</h2>
+              <EmailOverviewTab />
+            </div>
+          </div>
+        )}
+        {activeTab === 'email-templates' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-primary-500 to-temco-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Email Templates</h2>
+              <EmailTemplatesTab />
+            </div>
+          </div>
+        )}
+        {activeTab === 'email-groups' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-accent-500 to-green-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Audience Groups</h2>
+              <EmailGroupsTab />
+            </div>
+          </div>
+        )}
+        {activeTab === 'email-send' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-accent-500 to-accent-600" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Send Campaign</h2>
+              <EmailCampaignsTab />
+            </div>
+          </div>
+        )}
+        {activeTab === 'email-schedules' && (
+          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="h-1.5 bg-gradient-to-r from-purple-500 to-primary-500" />
+            <div className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6">Scheduled Campaigns</h2>
+              <EmailScheduleTab />
+            </div>
+          </div>
+        )}
 
         {/* RBAC — Users Tab */}
         {activeTab === 'rbac-users' && (
@@ -483,66 +540,6 @@ function AdminPage() {
             <div className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6">Modules & Pages</h2>
               <ModulesPagesTab />
-            </div>
-          </div>
-        )}
-
-        {/* Revenue Tab */}
-        {activeTab === 'revenue' && (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="h-1.5 bg-gradient-to-r from-green-400 to-green-600" />
-            <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-6">Revenue Overview</h2>
-              <div className="grid md:grid-cols-3 gap-6 mb-8">
-                <div className="p-6 bg-green-50 border border-green-200 rounded-xl text-center">
-                  <DollarSign className="w-8 h-8 text-green-500 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-green-700">${stats?.monthlyRevenue?.toFixed(2) || '0.00'}</div>
-                  <div className="text-sm text-green-600 mt-1">Monthly Revenue</div>
-                </div>
-                <div className="p-6 bg-primary-50 border border-primary-200 rounded-xl text-center">
-                  <CreditCard className="w-8 h-8 text-primary-500 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-primary-700">{stats?.activeSubscriptions || 0}</div>
-                  <div className="text-sm text-primary-600 mt-1">Active Subscriptions</div>
-                </div>
-                <div className="p-6 bg-accent-50 border border-accent-200 rounded-xl text-center">
-                  <Users className="w-8 h-8 text-accent-500 mx-auto mb-2" />
-                  <div className="text-3xl font-bold text-accent-700">{stats?.serverCustomers || 0}</div>
-                  <div className="text-sm text-accent-600 mt-1">Paying Customers</div>
-                </div>
-              </div>
-
-              <div className="border border-gray-200 rounded-xl p-6 bg-gray-50">
-                <h3 className="text-sm font-semibold text-gray-900 mb-4">Pricing Tiers</h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200">
-                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Plan</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Price</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Contabo Product</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">AI Requests</th>
-                        <th className="text-left py-2 px-3 text-xs font-semibold text-gray-500">Margin</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        { name: 'Starter', price: '$4/mo', product: 'V2', ai: 'None', margin: '$0.04' },
-                        { name: 'AI Basic', price: '$8/mo', product: 'V2', ai: '500/mo', margin: '$4.04' },
-                        { name: 'AI Pro', price: '$15/mo', product: 'V7', ai: '2000/mo', margin: '$6.51' },
-                        { name: 'AI Unlimited', price: '$25/mo', product: 'V7', ai: 'Unlimited', margin: '$16.51' },
-                      ].map((plan, i) => (
-                        <tr key={i} className="border-b border-gray-100">
-                          <td className="py-2.5 px-3 font-medium text-gray-900">{plan.name}</td>
-                          <td className="py-2.5 px-3 text-green-600 font-medium">{plan.price}</td>
-                          <td className="py-2.5 px-3 text-gray-600">{plan.product}</td>
-                          <td className="py-2.5 px-3 text-gray-600">{plan.ai}</td>
-                          <td className="py-2.5 px-3 text-green-600 font-medium">{plan.margin}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             </div>
           </div>
         )}

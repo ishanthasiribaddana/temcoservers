@@ -435,12 +435,89 @@ temcoservers-mariadb     → port 3306  (MariaDB 11, ijts_recovery_db)
 | NotificationsPage | `/notifications` | Yes |
 | PaymentPage | `/payment` | Yes |
 
+### Session 9 — 2026-03-19 (Subscription Billing Cycle)
+- [x] **Subscription Billing Cycle — Full Implementation (MVP Critical)**:
+  - **Problem**: Subscriptions had no end_date, no expiry check, no renewal flow, no auto-suspend — customers could use servers indefinitely after a single payment
+  - **Flyway V11** (`V11__subscription_billing_cycle.sql`):
+    - Added columns to `ts_subscription`: `grace_end_date`, `renewal_count`, `last_reminder_sent`, `auto_renew`
+    - Backfilled `end_date = start_date + 30 days` for all active subscriptions with NULL end_date
+  - **BillingService.java** — 8 new methods:
+    - `renewSubscription(gupId, adminLoginId)` — extends end_date by 30 days, resets grace/reminder state, increments renewal_count
+    - `findSubscriptionsExpiringWithin(days)` — finds subscriptions expiring within N days (for reminders)
+    - `findExpiredActiveSubscriptions()` — finds active subs past end_date (for grace transition)
+    - `moveToGrace(subscriptionId)` — sets status='grace', grace_end_date = today + 5 days
+    - `findExpiredGraceSubscriptions()` — finds grace subs past grace_end_date (for suspension)
+    - `suspendSubscription(subscriptionId)` — sets status='suspended'
+    - `markReminderSent(subscriptionId)` — tracks last reminder date to avoid duplicates
+    - `getContaboInstanceIdForUser(gupId)` — looks up Contabo instance ID for server restart
+  - **Fixed** `approvePayment()` and `autoActivateSubscription()` to set `end_date = start_date + 30 days` on activation (G3)
+  - **Fixed** `getUserSubscription()` to include grace/suspended/expired statuses in query
+  - **SubscriptionScheduler.java** — `@Singleton @Startup` EJB:
+    - `@Schedule(hour = "6")` — runs daily at 6 AM
+    - Stage 1: Send renewal reminders at 7-day, 3-day, 1-day marks (skips if already sent today)
+    - Stage 2: Move expired active subscriptions to 'grace' (5-day window), send grace notification
+    - Stage 3: Stop Contabo servers via API and mark as 'suspended' after grace period ends
+  - **NotificationService.java** — 3 new methods:
+    - `notifyRenewalReminder()` — "Your subscription expires on X (N days remaining)"
+    - `notifyGracePeriod()` — "Your subscription has expired, server will be SUSPENDED on X"
+    - `notifyServerSuspended()` — "Your server has been SUSPENDED"
+  - **AdminResource.java** — 1 new endpoint:
+    - `POST /admin/subscriptions/{gupId}/renew` — renews subscription + auto-restarts Contabo server if suspended
+  - **Subscription Status Lifecycle**:
+    ```
+    pending_payment → active → grace (5 days) → suspended
+                                 ↑ renewal resets to active + restarts server
+                    → rejected
+                    → cancelled
+    ```
+- [x] **Email Campaign Dashboard** (built in prior session):
+  - Flyway V9 + V10 migrations (8 tables)
+  - EmailCampaignService, BulkEmailService, EmailCampaignResource (22 REST endpoints)
+  - AdminEmailCampaignTabs.jsx — 5 tabs (Overview, Templates, Groups, Send, Schedules)
+  - Generic `/setup-mail-campaign` workflow created for reuse across apps
+
+### Session 10 — 2026-03-19 (MVP Gap-Fill — Frontend Lifecycle Awareness)
+- [x] **BillingPage.jsx — Full subscription lifecycle support**:
+  - Added `grace`, `suspended`, `expired` status banners with contextual warnings (orange/red/gray)
+  - Added `endDate` display (shows as "Renewal Date" for active, "Expired On" for others)
+  - Added `graceEndDate` display during grace period ("Suspend Date")
+  - Status-aware gradient bar, icon colors, and badge colors for all 5 subscription states
+  - Cancel button now only shows for `active` and `pending_payment` states
+  - Added `AlertTriangle`, `ShieldOff`, `Clock` icons from lucide-react
+- [x] **AdminPaymentsTabs.jsx (SubscriptionsTab) — Lifecycle states + Renew button**:
+  - Added `grace`, `suspended`, `expired` filter tabs with live counts
+  - Added `statusBadge()` and `statusIcon()` support for all 7 states
+  - Added **Renew** button on each subscription row (grace/suspended/expired/active)
+  - Calls `POST /admin/subscriptions/{gupId}/renew` with confirmation dialog
+  - Shows success/error banner with server restart status
+  - End date column highlights red for grace/suspended subscriptions
+- [x] **BillingService.java — getUserSubscription() enhanced**:
+  - Added `grace_end_date` and `renewal_count` to SQL query
+  - Returns `graceEndDate` and `renewalCount` fields to frontend
+- [x] **Terminal tab removed from all pages**:
+  - Removed from `DashboardPage.jsx` sidebar nav + "Coming Soon" placeholder section
+  - Removed from `BillingPage.jsx` sidebar nav
+  - Removed from `AiAssistantPage.jsx` sidebar nav
+  - Cleaned up unused `Terminal` import from all three files
+- [x] **AiAssistantPage.jsx — Service health check**:
+  - Added `aiStatus` state with health check on page load (`GET /health`)
+  - Shows amber warning banner when AI service is offline: "AI service is currently unavailable"
+  - Users can still browse the page but are informed upfront instead of discovering on first prompt
+- [x] **docker-compose.yml — Dev uploads volume fix**:
+  - Added `uploads-data:/usr/share/nginx/uploads:ro` to frontend service (was missing in dev)
+  - Production compose already had this correctly configured
+- [x] **Reusable workflows created**:
+  - Updated `setup-mail-campaign.md`: Added Step 7b (Transactional Email Integration) + Step 7c (CampaignScheduler EJB)
+  - Created `setup-subscription-lifecycle.md`: 9-step generic workflow for subscription billing cycles
+
 ### Current Step
-**v1.2.0 deployed to production. RBAC Admin Panel, Flyway migrations, bank slip upload, invoice PDF, UI navigation fixes all live.**
+**MVP gap-fill complete. All frontend pages now handle the full subscription lifecycle (grace/suspended/expired). Admin can renew subscriptions with one click. Terminal placeholder removed. AI page shows service status. Ready for v1.3.0 production release.**
 
 ### Pending / Next Steps
-- [ ] Add DEEPSEEK_API_KEY or OPENAI_API_KEY to AI module for live code generation
+- [ ] Release to production (v1.3.0) with billing cycle + email campaign + MVP gap-fill
+- [ ] Add DEEPSEEK_API_KEY or OPENAI_API_KEY to production AI module `.env`
 - [ ] Configure nightly replication: `ijts_system` → `ijts_recovery_db`
-- [ ] Production Nginx config for serving uploads volume (`/uploads/` location block)
-- [ ] Email-based password reset (v1.3.0+ — requires SMTP setup)
 - [ ] Test full bank slip upload + invoice generation flow on production
+- [ ] Server action audit log (ts_server_action_log table — planned but not created)
+- [ ] Plan upgrade/downgrade flow
+- [ ] Web terminal (Phase 2 — SSH in browser)

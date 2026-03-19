@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.0] - 2026-03-19
+
+### Added
+- **Subscription Billing Cycle** — Full lifecycle management for subscriptions
+  - Daily scheduler (6 AM) sends renewal reminders at 7, 3, 1 days before expiry
+  - Auto-transitions expired subscriptions to grace period (5 days)
+  - Auto-suspends servers via Contabo API after grace period ends
+  - Admin renewal endpoint with automatic server restart
+  - Flyway V11: grace_end_date, renewal_count, last_reminder_sent, auto_renew columns
+- **Email Campaign System** — Complete admin dashboard for bulk email marketing
+  - 5-tab UI: Overview, Templates, Groups, Send, Schedules
+  - HTML template editor with placeholder support
+  - Audience groups with member management
+  - Scheduled campaigns (once/daily/weekly/monthly) with daily quota tracking
+  - 22 REST endpoints, Flyway V9 + V10 (8 tables)
+- **Accounts & Finance Dashboard** — P&L statement with monthly trend charts
+  - Revenue/expense breakdown by chart of accounts
+  - Contabo payable tracking with exchange rate conversion
+  - Pricing tier analysis with AI cost margins
+  - Flyway V7: Contabo accounts payable sub-accounts
+- **Subscription Lifecycle UI** — Frontend now handles all billing states
+  - BillingPage: grace/suspended/expired warning banners with contextual messaging
+  - BillingPage: endDate display (Renewal Date for active, Expired On for others)
+  - BillingPage: graceEndDate display during grace period
+  - Admin SubscriptionsTab: grace/suspended/expired filter tabs with counts
+  - Admin SubscriptionsTab: one-click Renew button with server restart feedback
+- **AI Assistant Health Check** — Shows offline banner when AI service unreachable
+- **Notification Emails** — Renewal reminder, grace period, server suspended notifications
+
+### Changed
+- **BillingService.getUserSubscription** — Now returns graceEndDate and renewalCount
+- **BillingService.getProfitAndLoss** — Voucher counts filtered to TemcoServers-only (SSP/PSP/SSR/ACP prefixes), excludes legacy Java Institute data
+- **docker-compose.yml** — Added uploads volume mount to dev frontend container
+
+### Removed
+- **Terminal tab** — Removed placeholder from DashboardPage, BillingPage, AiAssistantPage sidebars
+- **Unused imports** — Cleaned up Terminal icon imports from all affected pages
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/service/BillingService.java` — Billing cycle methods, voucher filter fix, graceEndDate/renewalCount in getUserSubscription
+- `backend/src/main/java/com/temcoservers/service/SubscriptionScheduler.java` — NEW: daily lifecycle cron
+- `backend/src/main/java/com/temcoservers/service/NotificationService.java` — 3 lifecycle notification methods
+- `backend/src/main/java/com/temcoservers/service/EmailCampaignService.java` — NEW: email campaign CRUD
+- `backend/src/main/java/com/temcoservers/service/BulkEmailService.java` — NEW: bulk email sender
+- `backend/src/main/java/com/temcoservers/service/EmailService.java` — NEW: SMTP email service
+- `backend/src/main/java/com/temcoservers/rest/AdminResource.java` — Renewal endpoint
+- `backend/src/main/java/com/temcoservers/rest/EmailCampaignResource.java` — NEW: 22 campaign endpoints
+- `backend/src/main/resources/db/migration/V7__contabo_accounts_payable.sql` — NEW
+- `backend/src/main/resources/db/migration/V8__server_credentials_column.sql` — NEW
+- `backend/src/main/resources/db/migration/V9__email_campaign_tables.sql` — NEW
+- `backend/src/main/resources/db/migration/V10__email_schedule_and_quota.sql` — NEW
+- `backend/src/main/resources/db/migration/V11__subscription_billing_cycle.sql` — NEW
+- `frontend/src/pages/BillingPage.jsx` — Lifecycle status banners, endDate, status-aware colors
+- `frontend/src/pages/AdminPaymentsTabs.jsx` — Lifecycle filters, Renew button
+- `frontend/src/pages/AdminEmailCampaignTabs.jsx` — NEW: 5-tab email campaign dashboard
+- `frontend/src/pages/AdminAccountsTab.jsx` — NEW: accounts & finance P&L
+- `frontend/src/pages/AdminPage.jsx` — New sidebar sections for finance, billing, email marketing
+- `frontend/src/pages/AiAssistantPage.jsx` — Health check + offline banner
+- `frontend/src/pages/DashboardPage.jsx` — Terminal tab removed
+- `frontend/src/version.js` — v1.5.0
+- `docker-compose.yml` — Dev uploads volume
+- `docker-compose.prod.yml` — Production compose updates
+
+---
+
 ## [1.4.1] - 2026-03-18
 
 ### Added

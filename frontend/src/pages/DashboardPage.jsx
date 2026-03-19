@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Server, Code, LogOut, User, CreditCard, Activity, Terminal, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin } from 'lucide-react'
+import { Server, Code, LogOut, User, CreditCard, Activity, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin } from 'lucide-react'
 import api from '../api/config'
 
 function DashboardPage() {
@@ -74,7 +74,6 @@ function DashboardPage() {
     { icon: Activity, label: 'Overview', tab: 'overview' },
     { icon: Server, label: 'My Servers', tab: 'servers' },
     { icon: Code, label: 'AI Assistant', tab: 'ai', link: '/ai' },
-    { icon: Terminal, label: 'Terminal', tab: 'terminal' },
     { icon: CreditCard, label: 'Billing', tab: 'billing', link: '/billing' },
     { icon: Bell, label: 'Notifications', tab: 'notifications', link: '/notifications' },
     { icon: User, label: 'Profile', tab: 'profile' },
@@ -372,14 +371,6 @@ function DashboardPage() {
           </div>
         )}
 
-        {/* Terminal Tab */}
-        {activeTab === 'terminal' && (
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-8 text-center">
-            <Terminal className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">Web Terminal</h3>
-            <p className="text-sm text-gray-500">Coming soon — SSH access to your servers directly from the browser.</p>
-          </div>
-        )}
       </main>
     </div>
   )

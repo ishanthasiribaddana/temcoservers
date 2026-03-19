@@ -2,10 +2,13 @@ package com.temcoservers.rest;
 
 import com.temcoservers.service.AuthService;
 import com.temcoservers.service.BillingService;
+import com.temcoservers.service.ContaboService;
 import com.temcoservers.service.InvoicePdfGenerator;
 import com.temcoservers.service.NotificationService;
 import com.temcoservers.service.PayPalService;
 import jakarta.ejb.EJB;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -39,6 +42,12 @@ public class BillingResource {
 
     @EJB
     private PayPalService payPalService;
+
+    @EJB
+    private ContaboService contaboService;
+
+    @PersistenceContext(unitName = "temcoserversPU")
+    private EntityManager em;
 
     private Map<String, Object> getUser(String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) return null;
@@ -229,6 +238,62 @@ public class BillingResource {
             // 4. Auto-approve: activate subscription immediately
             billingService.autoActivateSubscription(gupId);
 
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+
+            // 4b. Provision Contabo server — DISABLED: PayPal receive funds not yet active in Sri Lanka.
+            // TODO: Uncomment this block when PayPal is enabled for Sri Lanka.
+            /*
+            try {
+                Map<String, Object> sub = billingService.getUserSubscription(gupId);
+                if (sub != null) {
+                    int subPlanId = ((Number) sub.get("planId")).intValue();
+                    var plans = billingService.getPlans();
+                    Map<String, Object> plan = plans.stream()
+                            .filter(p -> ((Number) p.get("planId")).intValue() == subPlanId)
+                            .findFirst().orElse(null);
+
+                    if (plan != null && plan.get("contaboProductId") != null) {
+                        String productId = (String) plan.get("contaboProductId");
+                        String displayName = "ts-" + gupId + "-" + System.currentTimeMillis() % 10000;
+                        String imageId = "afecbb85-e2fc-46f0-9684-b46b1faf00bb"; // Ubuntu 22.04
+
+                        Map<String, Object> instance = contaboService.createInstance(
+                                productId, "EU", imageId, displayName, 1);
+
+                        long contaboId = instance.get("instanceId") != null
+                                ? ((Number) instance.get("instanceId")).longValue() : 0;
+                        String ip = (String) instance.get("ipv4");
+
+                        // Store in ts_server_instance
+                        em.createNativeQuery(
+                                "INSERT INTO ts_server_instance (contabo_instance_id, general_user_profile_gup_id, " +
+                                "subscription_plan_id, ip_address, region, status, display_name, default_user) " +
+                                "VALUES (:cid, :gupId, :planId, :ip, 'EU', 'provisioning', :name, 'root')")
+                                .setParameter("cid", contaboId)
+                                .setParameter("gupId", gupId)
+                                .setParameter("planId", subPlanId)
+                                .setParameter("ip", ip)
+                                .setParameter("name", displayName)
+                                .executeUpdate();
+
+                        // Link to subscription
+                        Object idObj = em.createNativeQuery(
+                                "SELECT instance_id FROM ts_server_instance WHERE contabo_instance_id = :cid")
+                                .setParameter("cid", contaboId).getSingleResult();
+                        billingService.linkServerToSubscription(gupId, ((Number) idObj).intValue());
+
+                        result.put("serverProvisioned", true);
+                        result.put("serverIp", ip);
+                        result.put("contaboInstanceId", contaboId);
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warning("Server provisioning after PayPal failed (non-fatal): " + e.getMessage());
+                result.put("serverProvisioned", false);
+                result.put("provisionError", e.getMessage());
+            }
+            */
+
             // 5. Generate receipt PDF
             String purchaserName = user.get("firstName") + " " + user.get("lastName");
             String voucherId = "PSP-" + gupId + "-" + System.currentTimeMillis();
@@ -239,12 +304,12 @@ public class BillingResource {
                         orderId, captureId, payerEmail);
             } catch (Exception ignored) {}
 
-            // 6. Send notification
+            // 6. Send notification with server details
             try {
-                notificationService.notifyPaymentApproved(gupId, gupId);
+                String serverIp = (String) result.get("serverIp");
+                notificationService.notifyPaymentApproved(gupId, gupId, serverIp, planName, "root");
             } catch (Exception ignored) {}
 
-            Map<String, Object> result = new java.util.LinkedHashMap<>();
             result.put("message", "Payment successful! Your subscription is now active.");
             result.put("orderId", orderId);
             result.put("captureId", captureId);

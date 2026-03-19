@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Server, Code, LogOut, User, CreditCard, Activity, Terminal, Send, Copy, Check, Loader2, Sparkles, ChevronDown, ArrowLeft } from 'lucide-react'
+import { Server, Code, LogOut, User, CreditCard, Activity, Send, Copy, Check, Loader2, Sparkles, ChevronDown, ArrowLeft, AlertTriangle } from 'lucide-react'
 import { aiApi } from '../api/config'
 
 const LANGUAGES = [
@@ -22,6 +22,7 @@ function AiAssistantPage() {
   const [messages, setMessages] = useState([])
   const [loading, setLoading] = useState(false)
   const [copiedIdx, setCopiedIdx] = useState(null)
+  const [aiStatus, setAiStatus] = useState('checking') // 'checking' | 'online' | 'offline'
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
 
@@ -29,6 +30,10 @@ function AiAssistantPage() {
     const userData = localStorage.getItem('user')
     if (!userData) { navigate('/login'); return }
     setUser(JSON.parse(userData))
+    // Check if AI service is reachable
+    aiApi.get('/health', { timeout: 5000 })
+      .then(() => setAiStatus('online'))
+      .catch(() => setAiStatus('offline'))
   }, [navigate])
 
   useEffect(() => {
@@ -116,8 +121,7 @@ function AiAssistantPage() {
     { icon: Activity, label: 'Overview', path: '/dashboard' },
     { icon: Server, label: 'My Servers', path: '/dashboard' },
     { icon: Code, label: 'AI Assistant', path: '/ai', active: true },
-    { icon: Terminal, label: 'Terminal', path: '/dashboard' },
-    { icon: CreditCard, label: 'Billing', path: '/dashboard' },
+    { icon: CreditCard, label: 'Billing', path: '/billing' },
     { icon: User, label: 'Profile', path: '/dashboard' },
   ]
 
@@ -206,6 +210,14 @@ function AiAssistantPage() {
             </div>
           </div>
         </div>
+
+        {/* AI Service Status Banner */}
+        {aiStatus === 'offline' && (
+          <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-700">
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span><strong>AI service is currently unavailable.</strong> The API key may not be configured on the server. You can still browse, but code generation won't work until the service is online.</span>
+          </div>
+        )}
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
