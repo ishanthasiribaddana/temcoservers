@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8180/temcoservers/api'
+const API_URL = import.meta.env.VITE_API_URL || '/temcoservers/api'
 const AI_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8580'
 
 export const api = axios.create({

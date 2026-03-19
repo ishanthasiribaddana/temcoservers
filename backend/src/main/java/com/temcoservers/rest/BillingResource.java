@@ -452,6 +452,36 @@ public class BillingResource {
         }
     }
 
+    @GET
+    @Path("/uploads/{type}/{filename}")
+    public Response serveUpload(
+            @HeaderParam("Authorization") String authHeader,
+            @PathParam("type") String type,
+            @PathParam("filename") String filename) {
+        if (getUser(authHeader) == null) return Response.status(401).build();
+        // Only allow slips and invoices subdirs
+        if (!"slips".equals(type) && !"invoices".equals(type)) {
+            return Response.status(404).build();
+        }
+        // Sanitize filename to prevent path traversal
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            return Response.status(400).build();
+        }
+        java.nio.file.Path filePath = Paths.get("/opt/temcoservers/uploads", type, filename);
+        if (!Files.exists(filePath)) {
+            return Response.status(404).entity(Map.of("error", "File not found")).build();
+        }
+        try {
+            String contentType = filename.endsWith(".pdf") ? "application/pdf" : "image/jpeg";
+            byte[] data = Files.readAllBytes(filePath);
+            return Response.ok(data, contentType)
+                    .header("Content-Disposition", "inline; filename=\"" + filename + "\"")
+                    .build();
+        } catch (Exception e) {
+            return Response.status(500).build();
+        }
+    }
+
     private String getStringPart(Map<String, List<InputPart>> formParts, String key) {
         try {
             List<InputPart> parts = formParts.get(key);

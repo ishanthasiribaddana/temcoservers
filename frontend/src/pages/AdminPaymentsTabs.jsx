@@ -14,6 +14,8 @@ export function PaymentsTab() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(null)
   const [selectedSlip, setSelectedSlip] = useState(null)
+  const [slipBlobUrl, setSlipBlobUrl] = useState(null)
+  const [slipLoading, setSlipLoading] = useState(false)
   const [approveModal, setApproveModal] = useState(null)
   const [rejectModal, setRejectModal] = useState(null)
   const [notes, setNotes] = useState('')
@@ -188,7 +190,16 @@ export function PaymentsTab() {
                   <div className="ml-4 flex flex-col items-end gap-2">
                     {p.slipUrl ? (
                       <button
-                        onClick={() => setSelectedSlip(p.slipUrl)}
+                        onClick={async () => {
+                          setSelectedSlip(p.slipUrl)
+                          setSlipBlobUrl(null)
+                          setSlipLoading(true)
+                          try {
+                            const res = await api.get(`/billing${p.slipUrl}`, { responseType: 'blob' })
+                            setSlipBlobUrl(URL.createObjectURL(res.data))
+                          } catch { setSlipBlobUrl(null) }
+                          finally { setSlipLoading(false) }
+                        }}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-50 text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-100 transition"
                       >
                         <Eye className="w-3 h-3" /> View Slip
@@ -224,14 +235,20 @@ export function PaymentsTab() {
 
       {/* Slip Viewer Modal */}
       {selectedSlip && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedSlip(null)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setSelectedSlip(null); if (slipBlobUrl) URL.revokeObjectURL(slipBlobUrl) }}>
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-200">
               <h3 className="font-semibold text-gray-900">Bank Slip</h3>
               <button onClick={() => setSelectedSlip(null)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-4">
-              <img src={selectedSlip} alt="Bank Slip" className="w-full rounded-lg" onError={(e) => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '<p class="text-center text-gray-400 py-8">Unable to load slip image</p>' }} />
+              {slipLoading ? (
+                <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 text-gray-400 animate-spin" /></div>
+              ) : slipBlobUrl ? (
+                <img src={slipBlobUrl} alt="Bank Slip" className="w-full rounded-lg" />
+              ) : (
+                <p className="text-center text-gray-400 py-8">Unable to load slip image</p>
+              )}
             </div>
           </div>
         </div>

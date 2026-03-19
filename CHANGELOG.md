@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.12] - 2026-03-20
+
+### Fixed
+- **Slip images not loading in admin panel** — Images stored inside backend container were inaccessible via Nginx; added authenticated GET endpoint `/billing/uploads/{type}/{filename}` to serve slips and invoices through the backend API
+- **Browser preview API calls failing** — Changed default API URL to relative path and added Vite proxy for `/temcoservers/api` so API calls work through any origin
+
+### Added
+- **Backend file serving endpoint** — `GET /billing/uploads/{type}/{filename}` with auth check, path traversal protection, supports slips and invoices subdirs
+- **Vite dev proxy** — Proxies `/temcoservers/api` to `http://127.0.0.1:8180` for seamless local development
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/rest/BillingResource.java` — Added serveUpload endpoint
+- `frontend/src/pages/AdminPaymentsTabs.jsx` — Fetch slip images as blob via authenticated API
+- `frontend/src/api/config.js` — Default API URL changed to relative `/temcoservers/api`
+- `frontend/vite.config.js` — Added Vite proxy config
+- `frontend/src/version.js` — v1.8.12
+
+---
+
 ## [1.8.11] - 2026-03-20
 
 ### Fixed

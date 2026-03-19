@@ -9,5 +9,11 @@ export default defineConfig({
     watch: {
       usePolling: true,
     },
+    proxy: {
+      '/temcoservers/api': {
+        target: 'http://127.0.0.1:8180',
+        changeOrigin: true,
+      },
+    },
   },
 })
