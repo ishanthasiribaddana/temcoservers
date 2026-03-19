@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.4] - 2026-03-19
+
+### Fixed
+- **CI/CD migration password escaping** — `@` in DB password breaks when passed via `-p'...'` through SSH+docker exec chain; switched to `MYSQL_PWD` env var via `docker exec -e`
+
+### Files Changed
+- `.github/workflows/deploy.yml` — Use `MYSQL_PWD` env var instead of `-p` flag
+- `scripts/migrations/v1.8.4_seed_test_server.sql` — Re-run seed migration
+- `frontend/src/version.js` — v1.8.4
+
+---
+
 ## [1.8.3] - 2026-03-19
 
 ### Fixed

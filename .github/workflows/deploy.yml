@@ -97,6 +97,7 @@ jobs:
         env:
           SSH_CMD: ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
           VERSION: ${{ steps.version.outputs.VERSION }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
           echo "=== Checking for migration files ==="
           MIGRATION_FILES=$(find scripts/migrations/ -name "${VERSION}_*.sql" 2>/dev/null || true)
@@ -106,7 +107,7 @@ jobs:
             echo "Found migration files: $MIGRATION_FILES"
             for file in $MIGRATION_FILES; do
               echo "Running migration: $file"
-              cat "$file" | $SSH_CMD "docker exec -i temcoservers-mariadb mariadb -u root -p'${{ secrets.DB_PASSWORD }}'"
+              cat "$file" | $SSH_CMD "docker exec -i -e MYSQL_PWD='${DB_PASSWORD}' temcoservers-mariadb mariadb -u root"
             done
             echo "All migrations completed"
           fi
