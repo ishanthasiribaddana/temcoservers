@@ -123,17 +123,17 @@ function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900">
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 p-6 flex flex-col shadow-sm z-10">
+      <aside className="fixed left-0 top-0 h-full w-64 bg-white border-r border-gray-200 py-4 px-4 flex flex-col shadow-sm z-10">
         <div className="flex items-end gap-0.5 mb-2 cursor-pointer" onClick={() => window.open('/', '_blank')}>
           <img src="/images/temco-logo-sm.png" alt="Temco" className="h-8 w-auto" />
           <span className="text-lg font-semibold tracking-tight text-gray-800 leading-none" style={{ fontFamily: "'Inter', sans-serif" }}>Servers</span>
         </div>
-        <div className="flex items-center gap-1.5 mb-8 px-1">
+        <div className="flex items-center gap-1.5 mb-4 px-1">
           <Shield className="w-3.5 h-3.5 text-accent-500" />
           <span className="text-xs font-semibold text-accent-500 uppercase tracking-wide">Admin Panel</span>
         </div>
 
-        <nav className="flex-1 space-y-1">
+        <nav className="flex-1 overflow-y-auto space-y-0.5 pr-1">
           {navItems.map((item, i) => (
             <div key={i}>
               {item.section && (
@@ -143,7 +143,7 @@ function AdminPage() {
               )}
               <button
                 onClick={() => setActiveTab(item.tab)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition ${
                   activeTab === item.tab
                     ? 'bg-accent-50 text-accent-600 border border-accent-200 font-medium'
                     : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
@@ -166,8 +166,8 @@ function AdminPage() {
           </div>
         </nav>
 
-        <div className="border-t border-gray-200 pt-4 mt-4">
-          <div className="flex items-center gap-3 px-3 py-2 mb-2">
+        <div className="border-t border-gray-200 pt-3 mt-2">
+          <div className="flex items-center gap-3 px-3 py-1.5 mb-1">
             <div className="w-8 h-8 bg-gradient-to-br from-accent-400 to-accent-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
               {(user.firstName?.[0] || 'A').toUpperCase()}
             </div>
