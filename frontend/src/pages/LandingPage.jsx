@@ -120,7 +120,7 @@ function LandingPage() {
                 <Link to="/login" className="px-4 py-2 text-sm text-gray-600 hover:text-primary-500 transition">
                   Log In
                 </Link>
-                <Link to="/login" className="px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition">
+                <Link to="/register" className="px-4 py-2 text-sm bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-semibold transition">
                   Get Started
                 </Link>
               </>

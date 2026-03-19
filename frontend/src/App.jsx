@@ -8,12 +8,14 @@ import BillingPage from './pages/BillingPage'
 import NotificationsPage from './pages/NotificationsPage'
 import PaymentPage from './pages/PaymentPage'
 import WorkflowsBlogPage from './pages/WorkflowsBlogPage'
+import RegisterPage from './pages/RegisterPage'
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/ai" element={<AiAssistantPage />} />
       <Route path="/admin" element={<AdminPage />} />

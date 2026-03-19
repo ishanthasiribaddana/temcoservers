@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.7.0] - 2026-03-19
+
+### Added
+- **Self-Registration with NIC Lookup** — New `/register` page for TemcoServers customers
+  - 4-step flow: NIC lookup → OTP email verification → registration form → success
+  - Debounced NIC input (600ms) with inline status indicators (found, not-found, has-account)
+  - Auto-fills name, email, mobile from JIAT student records when NIC matches
+  - International users can skip NIC lookup and register directly
+- **OTP Email Verification** — Prevents erroneous NIC claims
+  - 6-digit OTP sent to student's registered email via branded HTML template
+  - Rate limiting: max 3 OTP requests per NIC per hour, max 5 verify attempts
+  - 5-minute OTP expiry with 60-second resend cooldown on frontend
+  - Short-lived JWT verification token gates `/auth/register` when linking to existing profile
+  - Admin CC (ishantha@gmail.com) on all OTP emails during staging period
+- **TXN_REGISTRATION_OTP Email Template** — Branded HTML template seeded via V12 Flyway migration
+- **Updated Navigation** — "Get Started" buttons on LandingPage and "Create account" link on LoginPage now route to `/register`
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/service/AuthService.java` — New `lookupByNic()`, `sendOtp()`, `verifyOtp()`, `registerUser()` methods
+- `backend/src/main/java/com/temcoservers/rest/AuthResource.java` — New endpoints: `GET /auth/nic-lookup/{nic}`, `POST /auth/send-otp`, `POST /auth/verify-otp`, `POST /auth/register`
+- `backend/src/main/resources/db/migration/V12__registration_otp.sql` — `ts_registration_otp` table + OTP email template seed
+- `frontend/src/pages/RegisterPage.jsx` — New 4-step registration page with debounced NIC input and OTP step
+- `frontend/src/App.jsx` — Added `/register` route
+- `frontend/src/pages/LandingPage.jsx` — Updated "Get Started" links to `/register`
+- `frontend/src/pages/LoginPage.jsx` — Added "Create account" link
+- `frontend/src/version.js` — v1.7.0
+
+---
+
 ## [1.6.0] - 2026-03-19
 
 ### Added

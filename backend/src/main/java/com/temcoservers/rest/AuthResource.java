@@ -44,6 +44,111 @@ public class AuthResource {
     }
 
     @GET
+    @Path("/nic-lookup/{nic}")
+    public Response nicLookup(@PathParam("nic") String nic) {
+        if (nic == null || nic.trim().length() < 5) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Invalid NIC number"))
+                    .build();
+        }
+        try {
+            Map<String, Object> result = authService.lookupByNic(nic);
+            if (result == null) {
+                return Response.ok(Map.of("found", false)).build();
+            }
+            result.put("found", true);
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @POST
+    @Path("/send-otp")
+    public Response sendOtp(Map<String, String> data) {
+        String nic = data.get("nic");
+        String email = data.get("email");
+        if (nic == null || nic.trim().isEmpty() || email == null || email.trim().isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "NIC and email are required"))
+                    .build();
+        }
+        try {
+            Map<String, Object> result = authService.sendOtp(nic.trim(), email.trim());
+            return Response.ok(result).build();
+        } catch (IllegalStateException e) {
+            return Response.status(429).entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @POST
+    @Path("/verify-otp")
+    public Response verifyOtp(Map<String, String> data) {
+        String nic = data.get("nic");
+        String otpCode = data.get("otpCode");
+        if (nic == null || nic.trim().isEmpty() || otpCode == null || otpCode.trim().isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "NIC and OTP code are required"))
+                    .build();
+        }
+        try {
+            Map<String, Object> result = authService.verifyOtp(nic.trim(), otpCode.trim());
+            return Response.ok(result).build();
+        } catch (SecurityException e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @POST
+    @Path("/register")
+    public Response register(Map<String, Object> data) {
+        String username = (String) data.get("username");
+        String password = (String) data.get("password");
+        String firstName = (String) data.get("firstName");
+        String lastName = (String) data.get("lastName");
+
+        if (username == null || password == null || firstName == null || lastName == null
+                || username.trim().isEmpty() || password.length() < 6 || firstName.trim().isEmpty() || lastName.trim().isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Username, password (min 6 chars), first name and last name are required"))
+                    .build();
+        }
+
+        try {
+            Map<String, Object> result = authService.registerUser(data);
+            return Response.status(Response.Status.CREATED).entity(result).build();
+        } catch (SecurityException e) {
+            return Response.status(Response.Status.FORBIDDEN)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(Map.of("error", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @GET
     @Path("/me")
     public Response getCurrentUser(@HeaderParam("Authorization") String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {

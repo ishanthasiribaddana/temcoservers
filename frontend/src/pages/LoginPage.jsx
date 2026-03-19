@@ -107,11 +107,14 @@ function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          <Link to="/" className="text-primary-500 hover:text-primary-600">
+        <div className="flex items-center justify-between mt-6 px-1">
+          <Link to="/" className="text-sm text-primary-500 hover:text-primary-600">
             &larr; Back to Home
           </Link>
-        </p>
+          <Link to="/register" className="text-sm text-gray-500 hover:text-primary-500">
+            Don't have an account? <span className="font-medium">Create one</span>
+          </Link>
+        </div>
       </div>
     </div>
   )
