@@ -84,7 +84,7 @@ function AiDoctorTab({ servers }) {
     setError('')
     try {
       const res = await api.post('/doctor/sessions', {
-        instanceId: selectedServer.instanceId
+        instanceId: selectedServer.localInstanceId || selectedServer.instanceId
       })
       setActiveSession(res.data)
       setMessages([])
@@ -109,7 +109,7 @@ function AiDoctorTab({ servers }) {
     try {
       const res = await api.post(`/doctor/sessions/${activeSession.session_id}/message`, {
         message: text,
-        instanceId: selectedServer.instanceId
+        instanceId: selectedServer.localInstanceId || selectedServer.instanceId
       })
 
       // Add command results
@@ -163,7 +163,7 @@ function AiDoctorTab({ servers }) {
     try {
       const res = await api.post(`/doctor/sessions/${activeSession.session_id}/confirm-fix`, {
         command: pendingFix.command,
-        instanceId: selectedServer.instanceId
+        instanceId: selectedServer.localInstanceId || selectedServer.instanceId
       })
 
       // Add command result

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.5] - 2026-03-19
+
+### Fixed
+- **AI Doctor "Server not found or access denied"** — Frontend was sending `contabo_instance_id` (0) instead of DB `instance_id` (primary key); changed all 3 API calls to use `localInstanceId`
+
+### Files Changed
+- `frontend/src/pages/AiDoctorTab.jsx` — Use `localInstanceId` for createSession, sendMessage, confirmFix
+- `frontend/src/version.js` — v1.8.5
+
+---
+
 ## [1.8.4] - 2026-03-19
 
 ### Fixed
