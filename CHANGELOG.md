@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.8] - 2026-03-19
+
+### Added
+- **Admin session management** — Delete individual sessions and bulk-cleanup stale sessions (no user messages) from Admin Panel AI Doctor tab
+- Backend: `DELETE /doctor/admin/sessions/{id}` and `DELETE /doctor/admin/sessions/stale` proxy endpoints
+- AI module: `DELETE /ai/doctor/admin/sessions/{id}` and `DELETE /ai/doctor/admin/sessions/stale` endpoints
+- Frontend: "Clean Stale" button + per-session trash icon in admin AI Doctor Sessions tab
+
+### Fixed
+- Cleaned up 12 stale test sessions from production database
+
+### Files Changed
+- `ai-module/doctor_routes.py` — Added admin delete + stale cleanup endpoints
+- `backend/src/main/java/com/temcoservers/rest/DoctorResource.java` — Added proxyDelete + admin delete endpoints
+- `frontend/src/pages/AdminPage.jsx` — Added Trash2 import, deleteSession, cleanupStale functions + UI buttons
+- `frontend/src/version.js` — v1.8.8
+
+---
+
 ## [1.8.7] - 2026-03-19
 
 ### Fixed

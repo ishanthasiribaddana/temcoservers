@@ -498,6 +498,55 @@ async def admin_list_sessions(limit: int = 50, status: Optional[str] = None):
         db.close()
 
 
+@router.delete("/admin/sessions/stale")
+async def admin_cleanup_stale():
+    """Admin: delete sessions that have no user messages (only system context)."""
+    db = get_session()
+    try:
+        from sqlalchemy import func
+        # Find sessions with zero user messages
+        stale_ids = [
+            s.session_id for s in db.query(AiDoctorSession).all()
+            if db.query(func.count(AiDoctorMessage.message_id)).filter(
+                AiDoctorMessage.session_id == s.session_id,
+                AiDoctorMessage.role == "user"
+            ).scalar() == 0
+        ]
+        if stale_ids:
+            db.query(AiDoctorMessage).filter(AiDoctorMessage.session_id.in_(stale_ids)).delete(synchronize_session=False)
+            db.query(AiDoctorSession).filter(AiDoctorSession.session_id.in_(stale_ids)).delete(synchronize_session=False)
+            db.commit()
+        return {"deleted": len(stale_ids), "session_ids": stale_ids}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Stale cleanup failed: {e}")
+        raise HTTPException(status_code=500, detail="Cleanup failed")
+    finally:
+        db.close()
+
+
+@router.delete("/admin/sessions/{session_id}")
+async def admin_delete_session(session_id: int):
+    """Admin: delete a session and all its messages."""
+    db = get_session()
+    try:
+        session = db.query(AiDoctorSession).filter(AiDoctorSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        db.query(AiDoctorMessage).filter(AiDoctorMessage.session_id == session_id).delete()
+        db.delete(session)
+        db.commit()
+        return {"deleted": True, "session_id": session_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Delete session failed: {e}")
+        raise HTTPException(status_code=500, detail="Delete failed")
+    finally:
+        db.close()
+
+
 @router.get("/admin/sessions/{session_id}")
 async def admin_get_session(session_id: int):
     """Admin: get full session detail including all messages and commands."""

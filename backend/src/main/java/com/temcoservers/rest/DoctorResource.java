@@ -241,6 +241,31 @@ public class DoctorResource {
         return proxyGet("/ai/doctor/admin/sessions/" + sessionId);
     }
 
+    @DELETE
+    @Path("/admin/sessions/stale")
+    public Response adminCleanupStale(@HeaderParam("Authorization") String authHeader) {
+        Map<String, Object> user = getUser(authHeader);
+        if (user == null) return Response.status(Response.Status.UNAUTHORIZED).build();
+        String role = (String) user.get("role");
+        if (!"Super Admin".equals(role) && !"System Admin".equals(role)) {
+            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Admin access required")).build();
+        }
+        return proxyDelete("/ai/doctor/admin/sessions/stale");
+    }
+
+    @DELETE
+    @Path("/admin/sessions/{sessionId}")
+    public Response adminDeleteSession(@HeaderParam("Authorization") String authHeader,
+                                       @PathParam("sessionId") int sessionId) {
+        Map<String, Object> user = getUser(authHeader);
+        if (user == null) return Response.status(Response.Status.UNAUTHORIZED).build();
+        String role = (String) user.get("role");
+        if (!"Super Admin".equals(role) && !"System Admin".equals(role)) {
+            return Response.status(Response.Status.FORBIDDEN).entity(Map.of("error", "Admin access required")).build();
+        }
+        return proxyDelete("/ai/doctor/admin/sessions/" + sessionId);
+    }
+
     // ─── HTTP Proxy helpers ──────────────────────────────────────────────────
 
     private Response proxyPost(String path, String jsonBody) {
@@ -256,6 +281,37 @@ public class DoctorResource {
             try (OutputStream os = conn.getOutputStream()) {
                 os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
             }
+
+            int status = conn.getResponseCode();
+            String body;
+            try {
+                body = new String(
+                        (status >= 200 && status < 300 ? conn.getInputStream() : conn.getErrorStream())
+                                .readAllBytes(), StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                body = "{\"error\":\"No response body\"}";
+            }
+
+            return Response.status(status)
+                    .entity(body)
+                    .type(MediaType.APPLICATION_JSON)
+                    .build();
+        } catch (Exception e) {
+            LOG.severe("AI Module proxy error: " + e.getMessage());
+            return Response.status(Response.Status.BAD_GATEWAY)
+                    .entity(Map.of("error", "AI Doctor service unavailable: " + e.getMessage()))
+                    .build();
+        }
+    }
+
+    private Response proxyDelete(String path) {
+        try {
+            URL url = new URL(AI_MODULE_URL + path);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("DELETE");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(30000);
 
             int status = conn.getResponseCode();
             String body;

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Server, Code, LogOut, User, CreditCard, Activity, Users, BarChart3,
   Search, ChevronLeft, ChevronRight, Globe, Cpu, Circle, DollarSign,
-  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail, Eye, Stethoscope, Terminal
+  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail, Eye, Stethoscope, Terminal, Trash2
 } from 'lucide-react'
 import api from '../api/config'
 import { APP_VERSION } from '../version'
@@ -611,6 +611,27 @@ function AdminDoctorTab() {
     } catch { /* ignore */ }
   }
 
+  const deleteSession = async (sessionId, e) => {
+    if (e) e.stopPropagation()
+    if (!confirm(`Delete session #${sessionId} and all its messages?`)) return
+    try {
+      await api.delete(`/doctor/admin/sessions/${sessionId}`)
+      if (selectedSession?.session_id === sessionId) setSelectedSession(null)
+      fetchSessions()
+    } catch { /* ignore */ }
+  }
+
+  const cleanupStale = async () => {
+    if (!confirm('Delete all sessions with no user messages (stale/empty sessions)?')) return
+    try {
+      const res = await api.delete('/doctor/admin/sessions/stale')
+      const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+      alert(`Cleaned up ${data.deleted || 0} stale session(s)`)
+      setSelectedSession(null)
+      fetchSessions()
+    } catch { alert('Cleanup failed') }
+  }
+
   const statusBadge = (s) => {
     if (s === 'open') return 'bg-green-100 text-green-700'
     if (s === 'resolved') return 'bg-blue-100 text-blue-700'
@@ -637,6 +658,10 @@ function AdminDoctorTab() {
                 <option value="escalated">Escalated</option>
                 <option value="closed">Closed</option>
               </select>
+              <button onClick={cleanupStale}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-red-200 text-red-600 rounded-lg hover:bg-red-50">
+                <Trash2 className="w-4 h-4" /> Clean Stale
+              </button>
               <button onClick={fetchSessions}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -665,6 +690,10 @@ function AdminDoctorTab() {
                     <div className="flex items-center gap-2 text-xs">
                       <span className="text-gray-400">GUP {s.gup_id}</span>
                       <span className={`px-2 py-0.5 rounded-full font-medium ${statusBadge(s.status)}`}>{s.status}</span>
+                      <button onClick={(e) => deleteSession(s.session_id, e)}
+                        className="p-1 text-gray-300 hover:text-red-500 transition" title="Delete session">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                   <div className="text-xs text-gray-400 mt-1">
