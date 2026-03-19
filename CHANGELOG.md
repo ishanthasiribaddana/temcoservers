@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.9] - 2026-03-20
+
+### Fixed
+- **Bank slip upload failing** — Nginx `client_max_body_size` was default 1MB, blocking all file uploads; increased to 10MB
+- **Upload directory permissions** — Backend Dockerfile now pre-creates `/opt/temcoservers/uploads/slips` with `jboss` ownership
+- **Auto-compress large images** — Frontend now resizes images exceeding 5MB using canvas before uploading instead of rejecting
+
+### Added
+- **Subscriptions tab "Review Payment" button** — `pending_payment` rows now show an amber button to navigate to Payments tab
+
+### Files Changed
+- `frontend/src/pages/PaymentPage.jsx` — Auto-compress oversized images via canvas
+- `frontend/src/pages/AdminPaymentsTabs.jsx` — Added `onNavigate` prop + Review Payment button for pending_payment
+- `frontend/src/pages/AdminPage.jsx` — Pass `setActiveTab` to SubscriptionsTab
+- `backend/Dockerfile` — Pre-create uploads/slips dir with jboss ownership
+- `frontend/src/version.js` — v1.8.9
+
+---
+
 ## [1.8.8] - 2026-03-19
 
 ### Added

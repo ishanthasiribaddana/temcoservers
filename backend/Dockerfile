@@ -18,6 +18,11 @@ COPY --chown=jboss:jboss configure-ds.cli /tmp/configure-ds.cli
 # Run CLI in embedded mode to configure datasource on default standalone.xml
 RUN /opt/jboss/wildfly/bin/jboss-cli.sh --file=/tmp/configure-ds.cli
 
+# Pre-create upload directories with correct ownership
+USER root
+RUN mkdir -p /opt/temcoservers/uploads/slips && chown -R jboss:jboss /opt/temcoservers
+USER jboss
+
 # Deploy the built WAR
 COPY --chown=jboss:jboss --from=builder /build/target/temcoservers.war /opt/jboss/wildfly/standalone/deployments/
 

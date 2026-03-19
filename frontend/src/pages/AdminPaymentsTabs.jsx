@@ -351,7 +351,7 @@ export function PaymentsTab() {
 // =========================================================================
 // Subscriptions Tab — Admin views all subscriptions
 // =========================================================================
-export function SubscriptionsTab() {
+export function SubscriptionsTab({ onNavigate }) {
   const [subs, setSubs] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -539,6 +539,14 @@ export function SubscriptionsTab() {
                       s.status === 'grace' || s.status === 'suspended' ? 'text-red-500 font-medium' : 'text-gray-500'
                     }`}>{s.endDate || '—'}</td>
                     <td className="py-3 px-4 text-right">
+                      {s.status === 'pending_payment' && (
+                        <button
+                          onClick={() => onNavigate && onNavigate('payments')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition"
+                        >
+                          <Eye className="w-3 h-3" /> Review Payment
+                        </button>
+                      )}
                       {['grace', 'suspended', 'expired', 'active'].includes(s.status) && (
                         <button
                           onClick={() => handleRenew(s.gupId, s.customerName)}

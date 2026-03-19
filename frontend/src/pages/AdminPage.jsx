@@ -495,7 +495,7 @@ function AdminPage() {
         {activeTab === 'payments' && <PaymentsTab />}
 
         {/* Subscriptions Tab */}
-        {activeTab === 'subscriptions' && <SubscriptionsTab />}
+        {activeTab === 'subscriptions' && <SubscriptionsTab onNavigate={setActiveTab} />}
 
         {/* Email Campaign Tabs */}
         {activeTab === 'email-overview' && (

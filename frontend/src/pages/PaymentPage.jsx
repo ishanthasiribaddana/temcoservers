@@ -166,13 +166,54 @@ function PaymentPage() {
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0]
-    if (file && file.size > 5 * 1024 * 1024) {
-      setError('File size must be less than 5MB')
+  const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const canvas = document.createElement('canvas')
+        let { width, height } = img
+        // Scale down until estimated size fits under MAX_FILE_SIZE
+        const scaleFactor = Math.min(1, Math.sqrt(MAX_FILE_SIZE / file.size) * 0.9)
+        width = Math.round(width * scaleFactor)
+        height = Math.round(height * scaleFactor)
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+            resolve(compressed)
+          },
+          'image/jpeg',
+          0.8
+        )
+      }
+      img.src = url
+    })
+  }
+
+  const handleFileChange = async (e) => {
+    let file = e.target.files[0]
+    if (!file) return
+    setError('')
+    // Auto-compress images that exceed the max size
+    if (file.size > MAX_FILE_SIZE && file.type.startsWith('image/')) {
+      try {
+        file = await compressImage(file)
+      } catch {
+        setError('Failed to compress image. Please upload a smaller file.')
+        return
+      }
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setError('File size must be less than 5MB. Please upload a smaller file or lower-resolution image.')
       return
     }
-    setError('')
     setForm(prev => ({ ...prev, file }))
   }
 
