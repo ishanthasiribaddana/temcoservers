@@ -89,6 +89,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      SSH_KEY_PATH: /run/secrets/ai_module_key
+    volumes:
+      - ${HOME}/ssh-keys/ai_module_key:/run/secrets/ai_module_key:ro
     ports:
       - "8580:8000"
     networks:

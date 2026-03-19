@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.6] - 2026-03-19
+
+### Fixed
+- **AI Doctor SSH auth** — Production server uses key-based auth; mounted SSH private key into AI module container via `SSH_KEY_PATH` so `ssh_executor.py` can fall back to key auth when password is empty
+
+### Files Changed
+- `docker-compose.prod.yml` — Added `SSH_KEY_PATH` env var + volume mount for AI module SSH key
+- `frontend/src/version.js` — v1.8.6
+
+---
+
 ## [1.8.5] - 2026-03-19
 
 ### Fixed
