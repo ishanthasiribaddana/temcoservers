@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Server, Code, LogOut, User, CreditCard, Activity, Users, BarChart3,
   Search, ChevronLeft, ChevronRight, Globe, Cpu, Circle, DollarSign,
-  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail
+  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail, Eye
 } from 'lucide-react'
 import api from '../api/config'
 import { APP_VERSION } from '../version'
@@ -85,6 +85,25 @@ function AdminPage() {
     e.preventDefault()
     setCustomerPage(0)
     fetchCustomers()
+  }
+
+  const handleImpersonate = async (gupId, customerName) => {
+    if (!confirm(`Login as ${customerName}? You'll be redirected to their dashboard.`)) return
+    try {
+      const res = await api.post(`/admin/impersonate/${gupId}`)
+      const customerData = res.data
+      // Save admin session for "Return to Admin" functionality
+      localStorage.setItem('adminToken', localStorage.getItem('token'))
+      localStorage.setItem('adminUser', localStorage.getItem('user'))
+      // Switch to customer session
+      localStorage.setItem('token', customerData.token)
+      localStorage.setItem('user', JSON.stringify(customerData))
+      localStorage.setItem('impersonating', 'true')
+      // Navigate to customer dashboard
+      window.location.href = '/dashboard'
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to impersonate user')
+    }
   }
 
   const handleLogout = () => {
@@ -332,6 +351,7 @@ function AdminPage() {
                           <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
                           <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Mobile</th>
                           <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                          <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -357,10 +377,22 @@ function AdminPage() {
                                 {c.isActive === 1 ? 'Active' : 'Inactive'}
                               </span>
                             </td>
+                            <td className="py-3 px-4">
+                              {c.isActive === 1 && (
+                                <button
+                                  onClick={() => handleImpersonate(c.gupId, `${c.firstName} ${c.lastName}`)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-accent-600 bg-accent-50 border border-accent-200 rounded-lg hover:bg-accent-100 transition"
+                                  title="Login as this customer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  Login As
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         ))}
                         {customers.length === 0 && (
-                          <tr><td colSpan={5} className="py-8 text-center text-gray-400">No customers found</td></tr>
+                          <tr><td colSpan={6} className="py-8 text-center text-gray-400">No customers found</td></tr>
                         )}
                       </tbody>
                     </table>

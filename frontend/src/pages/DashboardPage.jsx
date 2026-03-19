@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Server, Code, LogOut, User, CreditCard, Activity, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin } from 'lucide-react'
+import { Server, Code, LogOut, User, CreditCard, Activity, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin, ArrowLeft } from 'lucide-react'
 import api from '../api/config'
 
 function DashboardPage() {
@@ -44,6 +44,21 @@ function DashboardPage() {
       alert(`Action failed: ${err.response?.data?.error || err.message}`)
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  const isImpersonating = localStorage.getItem('impersonating') === 'true'
+
+  const handleReturnToAdmin = () => {
+    const adminToken = localStorage.getItem('adminToken')
+    const adminUser = localStorage.getItem('adminUser')
+    if (adminToken && adminUser) {
+      localStorage.setItem('token', adminToken)
+      localStorage.setItem('user', adminUser)
+      localStorage.removeItem('adminToken')
+      localStorage.removeItem('adminUser')
+      localStorage.removeItem('impersonating')
+      window.location.href = '/admin'
     }
   }
 
@@ -142,6 +157,23 @@ function DashboardPage() {
 
       {/* Main Content */}
       <main className="ml-64 p-8">
+        {/* Impersonation Banner */}
+        {isImpersonating && (
+          <div className="-mt-4 mb-6 mx-0 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <Shield className="w-4 h-4" />
+              <span>You are viewing as <strong>{user?.firstName} {user?.lastName}</strong> ({user?.username})</span>
+            </div>
+            <button
+              onClick={handleReturnToAdmin}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Return to Admin
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>

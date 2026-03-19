@@ -99,6 +99,54 @@ public class AuthService {
         return result;
     }
 
+    public Map<String, Object> impersonateUser(int targetGupId, int adminLoginId) {
+        // Find active user_login for the target gupId
+        TypedQuery<UserLogin> query = em.createQuery(
+                "SELECT ul FROM UserLogin ul " +
+                "JOIN FETCH ul.generalUserProfile " +
+                "JOIN FETCH ul.userRole " +
+                "WHERE ul.generalUserProfile.gupId = :gupId AND ul.isActive = 1",
+                UserLogin.class
+        );
+        query.setParameter("gupId", targetGupId);
+
+        List<UserLogin> results = query.getResultList();
+        if (results.isEmpty()) {
+            throw new SecurityException("User not found or inactive");
+        }
+
+        UserLogin userLogin = results.get(0);
+        GeneralUserProfile profile = userLogin.getGeneralUserProfile();
+        String roleName = userLogin.getUserRole().getRoleName();
+
+        // Generate a short-lived token (30 minutes) with impersonation claim
+        String token = Jwts.builder()
+                .subject(userLogin.getUsername())
+                .claim("loginId", userLogin.getLoginId())
+                .claim("gupId", profile.getGupId())
+                .claim("role", roleName)
+                .claim("impersonatedBy", adminLoginId)
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 30 * 60 * 1000)) // 30 min
+                .signWith(Keys.hmacShaKeyFor(JWT_SECRET.getBytes(StandardCharsets.UTF_8)))
+                .compact();
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("token", token);
+        result.put("loginId", userLogin.getLoginId());
+        result.put("gupId", profile.getGupId());
+        result.put("username", userLogin.getUsername());
+        result.put("role", roleName);
+        result.put("firstName", profile.getFirstName());
+        result.put("lastName", profile.getLastName());
+        result.put("email", profile.getEmail());
+        result.put("mobile", profile.getMobilePhone());
+        result.put("profileImage", profile.getImg());
+        result.put("impersonating", true);
+
+        return result;
+    }
+
     private String generateToken(int loginId, int gupId, String username, String role) {
         return Jwts.builder()
                 .subject(username)

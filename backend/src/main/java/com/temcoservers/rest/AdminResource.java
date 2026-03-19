@@ -567,6 +567,30 @@ public class AdminResource {
         }
     }
 
+    // =========================================================================
+    // Impersonation
+    // =========================================================================
+
+    @POST
+    @Path("/impersonate/{gupId}")
+    public Response impersonateUser(
+            @HeaderParam("Authorization") String authHeader,
+            @PathParam("gupId") int gupId) {
+        Map<String, Object> adminUser = validateAdminUser(authHeader);
+        if (adminUser == null)
+            return Response.status(403).entity(Map.of("error", "Admin access required")).build();
+        try {
+            int adminLoginId = (int) adminUser.get("loginId");
+            Map<String, Object> result = authService.impersonateUser(gupId, adminLoginId);
+            LOG.info("Admin " + adminLoginId + " impersonating user gupId=" + gupId);
+            return Response.ok(result).build();
+        } catch (SecurityException e) {
+            return Response.status(404).entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", e.getMessage())).build();
+        }
+    }
+
     @GET
     @Path("/accounts/profit-loss")
     public Response getProfitAndLoss(

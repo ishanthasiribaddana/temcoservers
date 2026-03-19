@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.6.0] - 2026-03-19
+
+### Added
+- **Admin User Impersonation** — Super Admin and System Admin can "Login As" any customer directly from the Customers tab
+  - 30-minute short-lived JWT with `impersonatedBy` audit claim
+  - Session swap via localStorage with admin session backup
+  - Amber impersonation banner on Dashboard and Billing pages with "Return to Admin" button
+  - Server-side logging of all impersonation events
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/service/AuthService.java` — New `impersonateUser()` method
+- `backend/src/main/java/com/temcoservers/rest/AdminResource.java` — New `POST /admin/impersonate/{gupId}` endpoint
+- `frontend/src/pages/AdminPage.jsx` — "Login As" button per customer row, Eye icon
+- `frontend/src/pages/DashboardPage.jsx` — Impersonation banner + Return to Admin logic
+- `frontend/src/pages/BillingPage.jsx` — Impersonation banner + Return to Admin logic
+- `frontend/src/version.js` — v1.6.0
+
+---
+
 ## [1.5.1] - 2026-03-19
 
 ### Fixed

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Server, Code, LogOut, User, CreditCard, Activity, Bell,
   Check, Loader2, ArrowLeft, Sparkles, Cpu, HardDrive, Zap, X,
-  Receipt, Calendar, DollarSign, Crown, AlertTriangle, ShieldOff, Clock
+  Receipt, Calendar, DollarSign, Crown, AlertTriangle, ShieldOff, Clock, Shield
 } from 'lucide-react'
 import api from '../api/config'
 
@@ -139,6 +139,34 @@ function BillingPage() {
 
       {/* Main */}
       <main className="ml-64 flex-1 p-8">
+        {/* Impersonation Banner */}
+        {localStorage.getItem('impersonating') === 'true' && (
+          <div className="-mt-4 mb-6 mx-0 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <Shield className="w-4 h-4" />
+              <span>You are viewing as <strong>{user?.firstName} {user?.lastName}</strong> ({user?.username})</span>
+            </div>
+            <button
+              onClick={() => {
+                const adminToken = localStorage.getItem('adminToken')
+                const adminUser = localStorage.getItem('adminUser')
+                if (adminToken && adminUser) {
+                  localStorage.setItem('token', adminToken)
+                  localStorage.setItem('user', adminUser)
+                  localStorage.removeItem('adminToken')
+                  localStorage.removeItem('adminUser')
+                  localStorage.removeItem('impersonating')
+                  window.location.href = '/admin'
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Return to Admin
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <button onClick={() => navigate('/dashboard')} className="text-gray-400 hover:text-gray-600 transition">
