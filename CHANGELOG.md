@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.5.1] - 2026-03-19
+
+### Fixed
+- **Admin Sidebar** — Menu items were cut off at the bottom on smaller viewports; added `overflow-y-auto` scrolling to nav section and tightened vertical spacing (padding, margins, item height) so all 14 nav items + footer remain accessible
+
+### Files Changed
+- `frontend/src/pages/AdminPage.jsx` — Sidebar: `p-6` → `py-4 px-4`, `mb-8` → `mb-4`, `space-y-1` → `space-y-0.5`, `py-2.5` → `py-2`, footer spacing reduced
+- `frontend/src/version.js` — v1.5.1
+
+---
+
 ## [1.5.0] - 2026-03-19
 
 ### Added
