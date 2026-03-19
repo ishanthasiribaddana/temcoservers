@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.3] - 2026-03-19
+
+### Fixed
+- **CI/CD migration step** — MariaDB container uses `mariadb` binary, not `mysql`; changed `docker exec -i temcoservers-mariadb mysql` → `mariadb`
+
+### Files Changed
+- `.github/workflows/deploy.yml` — Use `mariadb` command in docker exec
+- `scripts/migrations/v1.8.3_seed_test_server.sql` — Re-run seed migration
+- `frontend/src/version.js` — v1.8.3
+
+---
+
 ## [1.8.2] - 2026-03-19
 
 ### Fixed
