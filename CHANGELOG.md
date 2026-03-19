@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.1] - 2026-03-19
+
+### Fixed
+- **AI Doctor empty state on production** — Seeded test server instances for admin users so AI Doctor tab shows servers
+  - Dynamic SQL migration inserts server rows for `ishantha` and `teststudent` users
+  - Idempotent (skips if already exists)
+
+### Files Changed
+- `scripts/migrations/v1.8.1_seed_test_server.sql` — Seed test server instances
+- `frontend/src/version.js` — v1.8.1
+
+---
+
 ## [1.8.0] - 2026-03-19
 
 ### Added
