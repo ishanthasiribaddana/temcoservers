@@ -6,6 +6,7 @@ from typing import Optional
 from db import get_session, AiUsage
 from datetime import datetime
 import httpx
+from doctor_routes import router as doctor_router
 
 app = FastAPI(
     title="TemcoServers AI Module",
@@ -35,6 +36,9 @@ class CodeResponse(BaseModel):
     model_used: str
     tokens_used: int
     conversation_id: Optional[int] = None
+
+
+app.include_router(doctor_router)
 
 
 @app.get("/health")

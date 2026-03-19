@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Server, Code, LogOut, User, CreditCard, Activity, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin, ArrowLeft } from 'lucide-react'
+import { Server, Code, LogOut, User, CreditCard, Activity, Play, Square, RotateCw, Globe, Cpu, Loader2, RefreshCw, Circle, Bell, ExternalLink, Shield, Mail, Phone, MapPin, ArrowLeft, Stethoscope } from 'lucide-react'
 import api from '../api/config'
+import AiDoctorTab from './AiDoctorTab'
 
 function DashboardPage() {
   const navigate = useNavigate()
@@ -88,6 +89,7 @@ function DashboardPage() {
   const navItems = [
     { icon: Activity, label: 'Overview', tab: 'overview' },
     { icon: Server, label: 'My Servers', tab: 'servers' },
+    { icon: Stethoscope, label: 'AI Doctor', tab: 'doctor' },
     { icon: Code, label: 'AI Assistant', tab: 'ai', link: '/ai' },
     { icon: CreditCard, label: 'Billing', tab: 'billing', link: '/billing' },
     { icon: Bell, label: 'Notifications', tab: 'notifications', link: '/notifications' },
@@ -349,6 +351,11 @@ function DashboardPage() {
             )}
           </div>
         </div>
+        )}
+
+        {/* AI Doctor Tab */}
+        {activeTab === 'doctor' && (
+          <AiDoctorTab servers={servers} />
         )}
 
         {/* Profile Tab */}

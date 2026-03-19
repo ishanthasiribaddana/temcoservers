@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Server, Code, LogOut, User, CreditCard, Activity, Users, BarChart3,
   Search, ChevronLeft, ChevronRight, Globe, Cpu, Circle, DollarSign,
-  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail, Eye
+  Shield, Loader2, RefreshCw, LayoutDashboard, ExternalLink, Landmark, Mail, Eye, Stethoscope, Terminal
 } from 'lucide-react'
 import api from '../api/config'
 import { APP_VERSION } from '../version'
@@ -126,6 +126,7 @@ function AdminPage() {
     { icon: Users, label: 'Audiences', tab: 'email-groups' },
     { icon: Mail, label: 'Send', tab: 'email-send' },
     { icon: Mail, label: 'Schedules', tab: 'email-schedules' },
+    { icon: Stethoscope, label: 'AI Doctor', tab: 'ai-doctor', section: true, sectionLabel: 'AI & Support' },
     { icon: Users, label: 'User Mgmt', tab: 'rbac-users', section: true, sectionLabel: 'Access Control' },
     { icon: Shield, label: 'Roles & Perms', tab: 'rbac-roles' },
     { icon: Activity, label: 'Modules & Pages', tab: 'rbac-modules' },
@@ -543,6 +544,9 @@ function AdminPage() {
           </div>
         )}
 
+        {/* AI Doctor — Admin Sessions Tab */}
+        {activeTab === 'ai-doctor' && <AdminDoctorTab />}
+
         {/* RBAC — Users Tab */}
         {activeTab === 'rbac-users' && (
           <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
@@ -576,6 +580,144 @@ function AdminPage() {
           </div>
         )}
       </main>
+    </div>
+  )
+}
+
+// ─── Admin AI Doctor Sessions Tab ────────────────────────────────────────────
+
+function AdminDoctorTab() {
+  const [sessions, setSessions] = useState([])
+  const [selectedSession, setSelectedSession] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState('')
+
+  useEffect(() => { fetchSessions() }, [filter])
+
+  const fetchSessions = async () => {
+    setLoading(true)
+    try {
+      const params = filter ? `?status=${filter}` : ''
+      const res = await api.get(`/doctor/admin/sessions${params}`)
+      setSessions(Array.isArray(res.data) ? res.data : JSON.parse(res.data))
+    } catch { setSessions([]) }
+    finally { setLoading(false) }
+  }
+
+  const loadDetail = async (sessionId) => {
+    try {
+      const res = await api.get(`/doctor/admin/sessions/${sessionId}`)
+      setSelectedSession(typeof res.data === 'string' ? JSON.parse(res.data) : res.data)
+    } catch { /* ignore */ }
+  }
+
+  const statusBadge = (s) => {
+    if (s === 'open') return 'bg-green-100 text-green-700'
+    if (s === 'resolved') return 'bg-blue-100 text-blue-700'
+    if (s === 'escalated') return 'bg-amber-100 text-amber-700'
+    return 'bg-gray-100 text-gray-500'
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="h-1.5 bg-gradient-to-r from-emerald-500 to-teal-500" />
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <Stethoscope className="w-5 h-5 text-emerald-600" />
+              <h2 className="text-lg font-semibold text-gray-900">AI Doctor Sessions</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <select value={filter} onChange={e => setFilter(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="resolved">Resolved</option>
+                <option value="escalated">Escalated</option>
+                <option value="closed">Closed</option>
+              </select>
+              <button onClick={fetchSessions}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 text-emerald-500 animate-spin" />
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No AI Doctor sessions found.</p>
+          ) : (
+            <div className="space-y-2">
+              {sessions.map(s => (
+                <button key={s.session_id} onClick={() => loadDetail(s.session_id)}
+                  className={`w-full text-left p-4 rounded-lg border transition hover:shadow-sm ${
+                    selectedSession?.session_id === s.session_id ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-gray-900">#{s.session_id}</span>
+                      <span className="text-sm text-gray-600 truncate max-w-xs">{s.title || 'Untitled'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-400">GUP {s.gup_id}</span>
+                      <span className={`px-2 py-0.5 rounded-full font-medium ${statusBadge(s.status)}`}>{s.status}</span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {s.created_at ? new Date(s.created_at).toLocaleString() : ''}
+                    {s.closed_at ? ` — Closed: ${new Date(s.closed_at).toLocaleString()}` : ''}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Session Detail */}
+      {selectedSession && (
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+          <div className="h-1.5 bg-gradient-to-r from-teal-500 to-emerald-500" />
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-md font-semibold text-gray-900">
+                Session #{selectedSession.session_id} — {selectedSession.title || 'Untitled'}
+              </h3>
+              <button onClick={() => setSelectedSession(null)} className="text-xs text-gray-400 hover:text-gray-600">Close</button>
+            </div>
+            <div className="text-xs text-gray-500 mb-4">
+              GUP: {selectedSession.gup_id} | Instance: {selectedSession.instance_id} | Status: {selectedSession.status}
+            </div>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {(selectedSession.messages || []).map((m, i) => (
+                <div key={i} className={`p-3 rounded-lg text-sm ${
+                  m.role === 'user' ? 'bg-emerald-50 border border-emerald-200' :
+                  m.role === 'command' ? 'bg-gray-900 text-gray-300 font-mono text-xs' :
+                  m.role === 'assistant' ? 'bg-gray-50 border border-gray-200' :
+                  'bg-yellow-50 border border-yellow-200'
+                }`}>
+                  <div className="flex items-center gap-2 mb-1">
+                    {m.role === 'command' ? <Terminal className="w-3 h-3 text-green-400" /> : null}
+                    <span className="text-xs font-semibold uppercase opacity-60">{m.role}</span>
+                    <span className="text-xs opacity-40">{m.created_at ? new Date(m.created_at).toLocaleTimeString() : ''}</span>
+                  </div>
+                  <div className="whitespace-pre-wrap">{m.content}</div>
+                  {m.command_executed && (
+                    <div className="mt-2 p-2 bg-black/20 rounded text-xs font-mono">
+                      $ {m.command_executed}
+                      {m.command_output && <pre className="mt-1 text-gray-400 whitespace-pre-wrap">{m.command_output.slice(0, 2000)}</pre>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

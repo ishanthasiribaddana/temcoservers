@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.0] - 2026-03-19
+
+### Added
+- **AI Server Doctor** — AI-powered server troubleshooting assistant for customers
+  - Multi-turn chat UI with DeepSeek AI agent that runs whitelisted SSH diagnostics
+  - 3-tier command security: readonly (auto-execute), fix (requires confirmation), blocked (never run)
+  - SSH executor with paramiko — supports both password auth and private key fallback
+  - 50 requests/day quota per customer, tracked in `ts_ai_doctor_quota`
+  - Quick action buttons: Check Disk, Memory Usage, Docker Status, Network, System Logs, Service Health
+  - Session history with collapsible command output and fix confirmation cards
+- **AI Doctor Admin Panel** — Admin tab for viewing all AI Doctor sessions
+  - Session list with status filter (open/resolved/escalated/closed)
+  - Detail viewer showing full message and command audit trail
+  - Role-gated to Super Admin and System Admin
+- **Java Backend Proxy** — `DoctorResource.java` securely proxies AI Doctor requests
+  - JWT authentication with server ownership verification
+  - Server credentials injected server-side (never exposed to frontend)
+  - Admin endpoints for session list and detail views
+- **V13 Flyway Migration** — `ts_ai_doctor_session`, `ts_ai_doctor_message`, `ts_ai_doctor_quota` tables
+
+### Fixed
+- **DB connection string** — URL-encoded password in `ai-module/db.py` to handle `@` character
+
+### Files Changed
+- `ai-module/ssh_executor.py` — SSH executor with paramiko + 3-tier command whitelist + key auth fallback
+- `ai-module/doctor_agent.py` — DeepSeek AI agent with tool-use pattern
+- `ai-module/doctor_routes.py` — FastAPI routes for sessions, messages, quota, admin
+- `ai-module/db.py` — Added SQLAlchemy models + URL-encoded DB password fix
+- `ai-module/main.py` — Registered doctor router
+- `ai-module/requirements.txt` — Added paramiko==3.4.0
+- `backend/src/main/java/com/temcoservers/rest/DoctorResource.java` — JWT proxy + admin endpoints
+- `backend/src/main/resources/db/migration/V13__ai_doctor.sql` — 3 new tables
+- `frontend/src/pages/AiDoctorTab.jsx` — Chat UI component
+- `frontend/src/pages/DashboardPage.jsx` — Added AI Doctor tab
+- `frontend/src/pages/AdminPage.jsx` — Added AI Doctor admin sessions tab
+- `docker-compose.yml` — SSH_PRIVATE_KEY env var for AI module
+- `frontend/src/version.js` — v1.8.0
+
+---
+
 ## [1.7.0] - 2026-03-19
 
 ### Added

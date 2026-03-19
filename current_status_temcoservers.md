@@ -510,14 +510,53 @@ temcoservers-mariadb     → port 3306  (MariaDB 11, ijts_recovery_db)
   - Updated `setup-mail-campaign.md`: Added Step 7b (Transactional Email Integration) + Step 7c (CampaignScheduler EJB)
   - Created `setup-subscription-lifecycle.md`: 9-step generic workflow for subscription billing cycles
 
+### Session 11 — 2026-03-19 (Self-Registration + OTP Email Verification)
+- [x] **Self-Registration Page (`/register`)** — 4-step flow:
+  1. NIC Lookup (debounced 600ms, inline status: found/not-found/has-account)
+  2. OTP Email Verification (6-digit code, 5min expiry, 60s resend cooldown)
+  3. Registration Form (pre-filled from JIAT student data)
+  4. Success
+- [x] **Backend OTP endpoints**:
+  - `POST /auth/send-otp` — generates 6-digit OTP, stores in `ts_registration_otp`, sends branded HTML email via `TXN_REGISTRATION_OTP` template
+  - `POST /auth/verify-otp` — validates OTP (max 5 attempts), returns 10-min JWT verification token
+  - `POST /auth/register` — now requires `verificationToken` when `gupId` is provided (linking to existing profile)
+  - Rate limiting: max 3 OTP requests per NIC per hour
+  - Admin CC (ishantha@gmail.com) on all OTP emails during staging (remove after Sep 2026)
+- [x] **Flyway V12**: `ts_registration_otp` table + `TXN_REGISTRATION_OTP` email template seed
+- [x] **Frontend**: RegisterPage.jsx with debounced NIC input, OTP step (Step 1b), monospaced code input
+- [x] **Navigation**: Updated LandingPage "Get Started" links + LoginPage "Create account" link → `/register`
+- [x] **Released as v1.7.0** — deployed to production via CI/CD
+
+### Session 12 — 2026-03-19 (AI Doctor — Self-Service Server Troubleshooting)
+- [x] **AI Doctor** — browser-based AI troubleshooting assistant in customer dashboard:
+  - Chat UI with quick actions (Check Disk, Memory, Docker, Nginx, Logs, Full Health Check)
+  - DeepSeek AI agent with tool-use pattern — decides which SSH commands to run
+  - 3-tier command whitelist: readonly (auto-execute), fix (customer confirmation), blocked (never)
+  - Session history, fix confirmation flow, 50 req/day quota
+- [x] **Python AI Module** — 3 new files:
+  - `ssh_executor.py` — paramiko SSH + command whitelist (50+ readonly patterns, 9 fix patterns, 15+ blocked patterns)
+  - `doctor_agent.py` — DeepSeek/OpenAI tool-use agent, multi-turn conversation
+  - `doctor_routes.py` — FastAPI endpoints under `/ai/doctor/*` (sessions, messages, confirm-fix, quota, admin)
+- [x] **Java Backend Proxy** — `DoctorResource.java`:
+  - Proxies `/doctor/*` to Python AI module with JWT auth
+  - Injects server credentials server-side (password never exposed to frontend)
+  - Admin endpoints: `GET /doctor/admin/sessions`, `GET /doctor/admin/sessions/{id}` (role-gated)
+- [x] **Frontend**:
+  - `AiDoctorTab.jsx` — Chat UI in DashboardPage sidebar
+  - `AdminDoctorTab` — Admin sessions viewer in AdminPage with filter + detail
+- [x] **Flyway V13**: `ts_ai_doctor_session`, `ts_ai_doctor_message`, `ts_ai_doctor_quota` tables
+- [x] **Bug fix**: `db.py` — URL-encode DB password with `quote_plus()` (@ char was breaking SQLAlchemy URL)
+- [x] **Dependencies**: Added `paramiko==3.4.0` to ai-module requirements.txt
+
 ### Current Step
-**MVP gap-fill complete. All frontend pages now handle the full subscription lifecycle (grace/suspended/expired). Admin can renew subscriptions with one click. Terminal placeholder removed. AI page shows service status. Ready for v1.3.0 production release.**
+**AI Doctor feature complete and locally tested. All builds pass (frontend + backend + ai-module). V13 migration applied. Quota endpoint verified end-to-end through Java proxy. Ready for v1.8.0 release.**
 
 ### Pending / Next Steps
-- [ ] Release to production (v1.3.0) with billing cycle + email campaign + MVP gap-fill
-- [ ] Add DEEPSEEK_API_KEY or OPENAI_API_KEY to production AI module `.env`
+- [ ] Release to production (v1.8.0) with AI Doctor
+- [ ] End-to-end test AI Doctor on production with a real customer Contabo VPS
+- [ ] Add DEEPSEEK_API_KEY to production AI module `.env` (required for AI Doctor)
 - [ ] Configure nightly replication: `ijts_system` → `ijts_recovery_db`
 - [ ] Test full bank slip upload + invoice generation flow on production
 - [ ] Server action audit log (ts_server_action_log table — planned but not created)
 - [ ] Plan upgrade/downgrade flow
-- [ ] Web terminal (Phase 2 — SSH in browser)
+- [ ] ServerHealthScheduler EJB — proactive monitoring (Phase 2)
