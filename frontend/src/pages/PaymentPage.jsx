@@ -166,33 +166,45 @@ function PaymentPage() {
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+  const MAX_UPLOAD_SIZE = 1 * 1024 * 1024 // 1MB — compress anything larger
+  const HARD_LIMIT = 5 * 1024 * 1024 // 5MB absolute max after compression
+  const MAX_DIMENSION = 1920 // max width or height in px
 
   const compressImage = (file) => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const img = new Image()
       const url = URL.createObjectURL(file)
       img.onload = () => {
         URL.revokeObjectURL(url)
         const canvas = document.createElement('canvas')
         let { width, height } = img
-        // Scale down until estimated size fits under MAX_FILE_SIZE
-        const scaleFactor = Math.min(1, Math.sqrt(MAX_FILE_SIZE / file.size) * 0.9)
-        width = Math.round(width * scaleFactor)
-        height = Math.round(height * scaleFactor)
+        // Cap dimensions
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height)
+          width = Math.round(width * ratio)
+          height = Math.round(height * ratio)
+        }
+        // Further scale if file is very large
+        if (file.size > MAX_UPLOAD_SIZE) {
+          const scaleFactor = Math.min(1, Math.sqrt(MAX_UPLOAD_SIZE / file.size) * 0.85)
+          width = Math.round(width * scaleFactor)
+          height = Math.round(height * scaleFactor)
+        }
         canvas.width = width
         canvas.height = height
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0, width, height)
         canvas.toBlob(
           (blob) => {
+            if (!blob) { reject(new Error('Compression failed')); return }
             const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
             resolve(compressed)
           },
           'image/jpeg',
-          0.8
+          0.7
         )
       }
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')) }
       img.src = url
     })
   }
@@ -201,8 +213,8 @@ function PaymentPage() {
     let file = e.target.files[0]
     if (!file) return
     setError('')
-    // Auto-compress images that exceed the max size
-    if (file.size > MAX_FILE_SIZE && file.type.startsWith('image/')) {
+    // Auto-compress all images over 1MB
+    if (file.type.startsWith('image/') && file.size > MAX_UPLOAD_SIZE) {
       try {
         file = await compressImage(file)
       } catch {
@@ -210,8 +222,8 @@ function PaymentPage() {
         return
       }
     }
-    if (file.size > MAX_FILE_SIZE) {
-      setError('File size must be less than 5MB. Please upload a smaller file or lower-resolution image.')
+    if (file.size > HARD_LIMIT) {
+      setError('File size must be less than 5MB even after compression. Please use a lower-resolution image.')
       return
     }
     setForm(prev => ({ ...prev, file }))
@@ -245,13 +257,19 @@ function PaymentPage() {
         formData.append('differenceAmountLkr', String(parseFloat(form.amount || 0) - expectedLkr))
       }
 
-      const res = await api.post('/billing/upload-slip', formData, {
+      const res = await api.post(`/billing/submit-payment-slip`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       if (res.data?.invoiceUrl) setInvoiceUrl(res.data.invoiceUrl)
       setSubmitted(true)
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to submit payment. Please try again.')
+      const status = err.response?.status
+      const detail = err.response?.data?.error
+      if (status === 413) {
+        setError('File too large for server. Please upload a smaller image (under 2MB).')
+      } else {
+        setError(detail || `Failed to submit payment (${status || 'network error'}). Please try again.`)
+      }
     } finally {
       setSubmitting(false)
     }

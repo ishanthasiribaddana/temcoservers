@@ -326,6 +326,26 @@ public class BillingResource {
     }
 
     @POST
+    @Path("/submit-payment-slip")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Response submitPaymentSlip(
+            @HeaderParam("Authorization") String authHeader,
+            @FormParam("purchaserName") String purchaserName,
+            @FormParam("referenceNo") String referenceNo,
+            @FormParam("amount") String amountStr,
+            @FormParam("product") String product,
+            @FormParam("slip") InputStream slipInputStream,
+            @FormParam("planPriceUsd") String planPriceUsdStr,
+            @FormParam("exchangeRate") String exchangeRateStr,
+            @FormParam("expectedAmountLkr") String expectedAmountLkrStr,
+            @FormParam("differenceAmountLkr") String differenceAmountLkrStr,
+            @HeaderParam("Content-Disposition") String contentDisposition) {
+        return uploadSlip(authHeader, purchaserName, referenceNo, amountStr, product,
+                slipInputStream, planPriceUsdStr, exchangeRateStr, expectedAmountLkrStr,
+                differenceAmountLkrStr, contentDisposition);
+    }
+
+    @POST
     @Path("/upload-slip")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public Response uploadSlip(
@@ -345,8 +365,12 @@ public class BillingResource {
         if (user == null) return Response.status(401).entity(Map.of("error", "Unauthorized")).build();
 
         try {
+            LOG.info("uploadSlip called: purchaserName=" + purchaserName + ", referenceNo=" + referenceNo
+                    + ", amount=" + amountStr + ", product=" + product + ", slipInputStream=" + (slipInputStream != null));
+
             // Validate required fields
             if (purchaserName == null || referenceNo == null || amountStr == null || product == null) {
+                LOG.warning("uploadSlip: missing required fields");
                 return Response.status(400).entity(Map.of("error", "All fields are required")).build();
             }
 
