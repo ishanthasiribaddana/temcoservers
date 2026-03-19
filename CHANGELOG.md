@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.7] - 2026-03-19
+
+### Fixed
+- **AI Doctor DeepSeek→OpenAI fallback** — When DeepSeek returns error (e.g., 402 Insufficient Balance), automatically falls back to OpenAI API
+- **CI/CD compose sync** — `docker-compose.prod.yml` is now SCP'd to production on every deploy, ensuring compose changes always reach the server
+
+### Changed
+- Updated `release.md` with production lessons: DB access via docker exec, AI module SSH key setup, correct login credentials, required env vars and GitHub secrets
+
+### Files Changed
+- `ai-module/doctor_agent.py` — Added `_is_error_response()` + fallback logic in `_call_llm()`
+- `.github/workflows/deploy.yml` — SCP `docker-compose.prod.yml` to server
+- `frontend/src/version.js` — v1.8.7
+
+---
+
 ## [1.8.6] - 2026-03-19
 
 ### Fixed

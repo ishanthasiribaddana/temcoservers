@@ -72,6 +72,8 @@ jobs:
           $SCP_CMD ai-module.tar.gz $TARGET
           echo "=== Transferring frontend image ==="
           $SCP_CMD frontend.tar.gz $TARGET
+          echo "=== Transferring docker-compose.prod.yml ==="
+          $SCP_CMD docker-compose.prod.yml $TARGET
           echo "=== Transfer complete ==="
 
       # --- Load images and restart containers ---

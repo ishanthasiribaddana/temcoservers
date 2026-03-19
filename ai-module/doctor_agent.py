@@ -239,9 +239,14 @@ async def execute_confirmed_fix(
 
 
 async def _call_llm(messages: List[Dict], model: str, use_tools: bool = True) -> Dict:
-    """Call DeepSeek or OpenAI API."""
+    """Call DeepSeek or OpenAI API with automatic fallback."""
     if model == "deepseek" and DEEPSEEK_API_KEY:
-        return await _call_deepseek_api(messages, use_tools)
+        result = await _call_deepseek_api(messages, use_tools)
+        # Fallback to OpenAI if DeepSeek failed (e.g., 402 insufficient balance)
+        if _is_error_response(result) and OPENAI_API_KEY:
+            logger.warning("DeepSeek failed, falling back to OpenAI")
+            return await _call_openai_api(messages, use_tools)
+        return result
     elif OPENAI_API_KEY:
         return await _call_openai_api(messages, use_tools)
     elif DEEPSEEK_API_KEY:
@@ -251,6 +256,15 @@ async def _call_llm(messages: List[Dict], model: str, use_tools: bool = True) ->
             "choices": [{"message": {"content": "No AI API key configured. Please contact TemcoServers support."}}],
             "tokens": 0
         }
+
+
+def _is_error_response(result: Dict) -> bool:
+    """Check if an LLM response is an error placeholder (not a real AI response)."""
+    if result.get("tokens", 0) == 0:
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if "AI service temporarily unavailable" in content:
+            return True
+    return False
 
 
 async def _call_deepseek_api(messages: List[Dict], use_tools: bool) -> Dict:
