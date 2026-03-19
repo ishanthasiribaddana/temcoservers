@@ -87,6 +87,14 @@
             <artifactId>jackson-databind</artifactId>
             <version>2.17.0</version>
         </dependency>
+
+        <!-- RESTEasy Multipart (provided by WildFly 30 at runtime) -->
+        <dependency>
+            <groupId>org.jboss.resteasy</groupId>
+            <artifactId>resteasy-multipart-provider</artifactId>
+            <version>6.2.7.Final</version>
+            <scope>provided</scope>
+        </dependency>
     </dependencies>
 
     <build>

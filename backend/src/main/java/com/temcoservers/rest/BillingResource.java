@@ -12,10 +12,13 @@ import jakarta.persistence.PersistenceContext;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.plugins.providers.multipart.InputPart;
+import org.jboss.resteasy.plugins.providers.multipart.MultipartFormDataInput;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -326,47 +329,29 @@ public class BillingResource {
     }
 
     @POST
-    @Path("/submit-payment-slip")
-    @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public Response submitPaymentSlip(
-            @HeaderParam("Authorization") String authHeader,
-            @FormParam("purchaserName") String purchaserName,
-            @FormParam("referenceNo") String referenceNo,
-            @FormParam("amount") String amountStr,
-            @FormParam("product") String product,
-            @FormParam("slip") InputStream slipInputStream,
-            @FormParam("planPriceUsd") String planPriceUsdStr,
-            @FormParam("exchangeRate") String exchangeRateStr,
-            @FormParam("expectedAmountLkr") String expectedAmountLkrStr,
-            @FormParam("differenceAmountLkr") String differenceAmountLkrStr,
-            @HeaderParam("Content-Disposition") String contentDisposition) {
-        return uploadSlip(authHeader, purchaserName, referenceNo, amountStr, product,
-                slipInputStream, planPriceUsdStr, exchangeRateStr, expectedAmountLkrStr,
-                differenceAmountLkrStr, contentDisposition);
-    }
-
-    @POST
     @Path("/upload-slip")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
     public Response uploadSlip(
             @HeaderParam("Authorization") String authHeader,
-            @FormParam("purchaserName") String purchaserName,
-            @FormParam("referenceNo") String referenceNo,
-            @FormParam("amount") String amountStr,
-            @FormParam("product") String product,
-            @FormParam("slip") InputStream slipInputStream,
-            @FormParam("planPriceUsd") String planPriceUsdStr,
-            @FormParam("exchangeRate") String exchangeRateStr,
-            @FormParam("expectedAmountLkr") String expectedAmountLkrStr,
-            @FormParam("differenceAmountLkr") String differenceAmountLkrStr,
-            @HeaderParam("Content-Disposition") String contentDisposition) {
+            MultipartFormDataInput input) {
 
         Map<String, Object> user = getUser(authHeader);
         if (user == null) return Response.status(401).entity(Map.of("error", "Unauthorized")).build();
 
         try {
+            Map<String, List<InputPart>> formParts = input.getFormDataMap();
+
+            String purchaserName = getStringPart(formParts, "purchaserName");
+            String referenceNo = getStringPart(formParts, "referenceNo");
+            String amountStr = getStringPart(formParts, "amount");
+            String product = getStringPart(formParts, "product");
+            String planPriceUsdStr = getStringPart(formParts, "planPriceUsd");
+            String exchangeRateStr = getStringPart(formParts, "exchangeRate");
+            String expectedAmountLkrStr = getStringPart(formParts, "expectedAmountLkr");
+            String differenceAmountLkrStr = getStringPart(formParts, "differenceAmountLkr");
+
             LOG.info("uploadSlip called: purchaserName=" + purchaserName + ", referenceNo=" + referenceNo
-                    + ", amount=" + amountStr + ", product=" + product + ", slipInputStream=" + (slipInputStream != null));
+                    + ", amount=" + amountStr + ", product=" + product);
 
             // Validate required fields
             if (purchaserName == null || referenceNo == null || amountStr == null || product == null) {
@@ -385,6 +370,13 @@ public class BillingResource {
                 return Response.status(400).entity(Map.of("error", "Amount must be positive")).build();
             }
 
+            // Get file input stream
+            List<InputPart> slipParts = formParts.get("slip");
+            if (slipParts == null || slipParts.isEmpty()) {
+                return Response.status(400).entity(Map.of("error", "Bank slip file is required")).build();
+            }
+            InputStream slipInputStream = slipParts.get(0).getBody(InputStream.class, null);
+
             int gupId = (int) user.get("gupId");
             int loginId = (int) user.get("loginId");
 
@@ -397,26 +389,22 @@ public class BillingResource {
             // Generate unique filename
             String timestamp = String.valueOf(System.currentTimeMillis());
             String originalFilename = "slip_" + loginId + "_" + timestamp;
-            String savedFilename = originalFilename + ".jpg"; // default extension
+            String savedFilename = originalFilename + ".jpg";
 
             // Save file to disk
             java.nio.file.Path filePath = uploadDir.resolve(savedFilename);
             int fileSize = 0;
-            if (slipInputStream != null) {
-                try (OutputStream os = Files.newOutputStream(filePath)) {
-                    byte[] buffer = new byte[8192];
-                    int bytesRead;
-                    while ((bytesRead = slipInputStream.read(buffer)) != -1) {
-                        if (fileSize + bytesRead > MAX_FILE_SIZE) {
-                            Files.deleteIfExists(filePath);
-                            return Response.status(400).entity(Map.of("error", "File size exceeds 5MB limit")).build();
-                        }
-                        os.write(buffer, 0, bytesRead);
-                        fileSize += bytesRead;
+            try (OutputStream os = Files.newOutputStream(filePath)) {
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = slipInputStream.read(buffer)) != -1) {
+                    if (fileSize + bytesRead > MAX_FILE_SIZE) {
+                        Files.deleteIfExists(filePath);
+                        return Response.status(400).entity(Map.of("error", "File size exceeds 5MB limit")).build();
                     }
+                    os.write(buffer, 0, bytesRead);
+                    fileSize += bytesRead;
                 }
-            } else {
-                return Response.status(400).entity(Map.of("error", "Bank slip file is required")).build();
             }
 
             // Relative URL for serving via Nginx
@@ -461,6 +449,17 @@ public class BillingResource {
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "Slip upload failed", e);
             return Response.status(500).entity(Map.of("error", "Failed to process payment slip: " + e.getMessage())).build();
+        }
+    }
+
+    private String getStringPart(Map<String, List<InputPart>> formParts, String key) {
+        try {
+            List<InputPart> parts = formParts.get(key);
+            if (parts == null || parts.isEmpty()) return null;
+            String val = parts.get(0).getBodyAsString().trim();
+            return val.isEmpty() ? null : val;
+        } catch (Exception e) {
+            return null;
         }
     }
 }

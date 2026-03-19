@@ -257,7 +257,7 @@ function PaymentPage() {
         formData.append('differenceAmountLkr', String(parseFloat(form.amount || 0) - expectedLkr))
       }
 
-      const res = await api.post(`/billing/submit-payment-slip`, formData, {
+      const res = await api.post('/billing/upload-slip', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       if (res.data?.invoiceUrl) setInvoiceUrl(res.data.invoiceUrl)

@@ -7,22 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.8.9] - 2026-03-20
+## [1.8.11] - 2026-03-20
 
 ### Fixed
-- **Bank slip upload failing** — Nginx `client_max_body_size` was default 1MB, blocking all file uploads; increased to 10MB
+- **Bank slip upload broken (root cause)** — `@FormParam` doesn't work with `multipart/form-data` on WildFly 30 RESTEasy; rewrote endpoint to use `MultipartFormDataInput` with `InputPart` parsing — **tested and verified locally**
+- **Nginx `client_max_body_size`** — was default 1MB blocking all file uploads; increased to 10MB on production
 - **Upload directory permissions** — Backend Dockerfile now pre-creates `/opt/temcoservers/uploads/slips` with `jboss` ownership
-- **Auto-compress large images** — Frontend now resizes images exceeding 5MB using canvas before uploading instead of rejecting
+- **Auto-compress large images** — Frontend resizes images >1MB using canvas before uploading (was 5MB threshold, too high)
+- **Better error messages** — Frontend now shows HTTP status code and specific error from backend instead of generic message
 
 ### Added
-- **Subscriptions tab "Review Payment" button** — `pending_payment` rows now show an amber button to navigate to Payments tab
+- **Subscriptions tab "Review Payment" button** — `pending_payment` rows show amber button to navigate to Payments tab
+- **RESTEasy multipart dependency** — `resteasy-multipart-provider` 6.2.7.Final (provided scope) in pom.xml
 
 ### Files Changed
-- `frontend/src/pages/PaymentPage.jsx` — Auto-compress oversized images via canvas
-- `frontend/src/pages/AdminPaymentsTabs.jsx` — Added `onNavigate` prop + Review Payment button for pending_payment
-- `frontend/src/pages/AdminPage.jsx` — Pass `setActiveTab` to SubscriptionsTab
+- `backend/src/main/java/com/temcoservers/rest/BillingResource.java` — Rewritten uploadSlip to use MultipartFormDataInput + getStringPart helper
+- `backend/pom.xml` — Added resteasy-multipart-provider dependency (provided)
 - `backend/Dockerfile` — Pre-create uploads/slips dir with jboss ownership
-- `frontend/src/version.js` — v1.8.9
+- `frontend/src/pages/PaymentPage.jsx` — Auto-compress images >1MB, better error display
+- `frontend/src/pages/AdminPaymentsTabs.jsx` — Review Payment button for pending_payment
+- `frontend/src/pages/AdminPage.jsx` — Pass setActiveTab to SubscriptionsTab
+- `frontend/src/version.js` — v1.8.11
 
 ---
 
