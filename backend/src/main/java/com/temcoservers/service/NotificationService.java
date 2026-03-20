@@ -28,6 +28,7 @@ public class NotificationService {
     private static final int PURPOSE_SERVER_PROVISIONED = 6;
     private static final int PURPOSE_SUBSCRIPTION_RENEWAL = 7;
     private static final int PURPOSE_AI_USAGE_ALERT = 8;
+    private static final int PURPOSE_WELCOME = 10;
 
     public void sendNotification(int sentByGupId, int sentToGupId, int typeId, int purposeId, String content) {
         em.createNativeQuery(
@@ -73,8 +74,19 @@ public class NotificationService {
             case PURPOSE_SERVER_PROVISIONED: return "TemcoServers - Your Server is Ready!";
             case PURPOSE_SUBSCRIPTION_RENEWAL: return "TemcoServers - Subscription Update";
             case PURPOSE_AI_USAGE_ALERT: return "TemcoServers - AI Usage Alert";
+            case PURPOSE_WELCOME: return "Welcome to TemcoServers!";
             default: return "TemcoServers - Notification";
         }
+    }
+
+    public void notifyWelcome(int gupId, String firstName) {
+        String content = String.format(
+                "Welcome to TemcoServers, %s! Your account has been created successfully. " +
+                "To get started, browse our server plans and subscribe to one that fits your needs. " +
+                "Once you subscribe and upload your bank slip, our team will verify the payment " +
+                "and provision your dedicated server. Thank you for choosing TemcoServers!",
+                firstName);
+        sendNotification(gupId, gupId, TYPE_EMAIL, PURPOSE_WELCOME, content);
     }
 
     public void notifySubscriptionCreated(int adminGupId, int userGupId, String planName) {

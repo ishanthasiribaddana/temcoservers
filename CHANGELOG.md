@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.14] - 2026-03-20
+
+### Added
+- **Welcome notification on registration** — New customers now receive a welcome notification when they create an account, guiding them to browse plans and upload a bank slip
+- **`notifyWelcome` method** in `NotificationService` — Sends welcome message with `PURPOSE_WELCOME` (communication_purpose id=10)
+- **DB migration** — Added "Welcome" communication purpose (id=10) to `communication_purpose` table
+
+### Fixed
+- **4 existing customers with zero notifications** — Backfilled welcome notifications for customers who registered before this feature existed
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/rest/AuthResource.java` — Injected `NotificationService`, calls `notifyWelcome()` after successful registration
+- `backend/src/main/java/com/temcoservers/service/NotificationService.java` — Added `PURPOSE_WELCOME` constant, `notifyWelcome()` method, email subject mapping
+- `scripts/migrations/v1.8.13_welcome_purpose.sql` — Adds "Welcome" communication purpose
+- `frontend/src/version.js` — v1.8.14
+
+---
+
 ## [1.8.13] - 2026-03-20
 
 ### Fixed

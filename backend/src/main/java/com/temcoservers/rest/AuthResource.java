@@ -1,6 +1,7 @@
 package com.temcoservers.rest;
 
 import com.temcoservers.service.AuthService;
+import com.temcoservers.service.NotificationService;
 import jakarta.ejb.EJB;
 import jakarta.ejb.EJBException;
 import jakarta.ws.rs.*;
@@ -15,6 +16,9 @@ public class AuthResource {
 
     @EJB
     private AuthService authService;
+
+    @EJB
+    private NotificationService notificationService;
 
     @POST
     @Path("/login")
@@ -132,6 +136,13 @@ public class AuthResource {
 
         try {
             Map<String, Object> result = authService.registerUser(data);
+
+            // Send welcome notification
+            try {
+                int gupId = ((Number) result.get("gupId")).intValue();
+                notificationService.notifyWelcome(gupId, firstName != null ? firstName.trim() : "Customer");
+            } catch (Exception ignored) {}
+
             return Response.status(Response.Status.CREATED).entity(result).build();
         } catch (SecurityException e) {
             return Response.status(Response.Status.FORBIDDEN)
