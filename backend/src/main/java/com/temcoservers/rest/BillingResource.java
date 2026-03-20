@@ -100,12 +100,10 @@ public class BillingResource {
             int loginId = (int) user.get("loginId");
             Map<String, Object> result = billingService.subscribe(gupId, loginId, planId);
 
-            // Send notification
+            // Send notification — subscription created, awaiting payment
             try {
                 String planName = (String) result.get("planName");
-                double price = (double) result.get("priceMonthly");
                 notificationService.notifySubscriptionCreated(gupId, gupId, planName);
-                notificationService.notifyPaymentReceived(gupId, gupId, price, planName, null);
             } catch (Exception ignored) {}
 
             return Response.ok(result).build();

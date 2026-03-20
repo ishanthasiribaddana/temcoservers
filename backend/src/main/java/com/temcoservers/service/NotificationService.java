@@ -79,10 +79,11 @@ public class NotificationService {
 
     public void notifySubscriptionCreated(int adminGupId, int userGupId, String planName) {
         String content = String.format(
-                "Your TemcoServers subscription to the '%s' plan has been activated. " +
-                "You can now access your server from the dashboard. Thank you for choosing TemcoServers!",
+                "Your TemcoServers subscription to the '%s' plan has been created and is awaiting payment. " +
+                "Please upload your bank slip to complete the payment process. " +
+                "Your server will be provisioned once the payment is verified by our team.",
                 planName);
-        sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_SERVER_PROVISIONED, content);
+        sendNotification(adminGupId, userGupId, TYPE_EMAIL, PURPOSE_PAYMENT_REMINDER, content);
     }
 
     public void notifySubscriptionCancelled(int adminGupId, int userGupId) {

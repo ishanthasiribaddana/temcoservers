@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.8.13] - 2026-03-20
+
+### Fixed
+- **Misleading subscription notification** — `notifySubscriptionCreated` was saying "subscription activated" when user merely selected a plan (before payment). Now correctly says "created and awaiting payment, please upload bank slip"
+- **Premature payment notification** — `notifyPaymentReceived` was fired at subscribe time (no payment yet). Removed from `/subscribe` endpoint; only sent after actual bank slip upload
+
+### Added
+- **Stored procedure migration SQL** — `v1.8.12_stored_procedures.sql` and `all_procedures.sql` for syncing DB procedures to production
+
+### Files Changed
+- `backend/src/main/java/com/temcoservers/service/NotificationService.java` — Fixed `notifySubscriptionCreated` message and purpose type
+- `backend/src/main/java/com/temcoservers/rest/BillingResource.java` — Removed premature `notifyPaymentReceived` from `/subscribe`
+- `scripts/migrations/v1.8.12_stored_procedures.sql` — Stored procedure creation SQL
+- `scripts/migrations/all_procedures.sql` — Full procedure dump for production sync
+- `frontend/src/version.js` — v1.8.13
+
+---
+
 ## [1.8.12] - 2026-03-20
 
 ### Fixed
